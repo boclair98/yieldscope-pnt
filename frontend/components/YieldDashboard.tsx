@@ -41,7 +41,10 @@ import {
   METRIC_DEFINITIONS,
   SCENARIO_ORDER,
   SCENARIOS,
+  TEST_CONTROL_PLANS,
   TEST_OPERATIONS,
+  type DispositionAction,
+  type LotDisposition,
   type TestFlowStageKey,
   type ScenarioKey,
 } from "@/lib/quality";
@@ -61,10 +64,23 @@ const statusStyle: Record<string, string> = {
   해제: "border-[#31c7a2]/25 bg-[#31c7a2]/10 text-[#65ddbf]",
 };
 
+const dispositionStyle: Record<DispositionAction, string> = {
+  hold: "border-[#f36b78]/25 bg-[#f36b78]/10 text-[#ff96a0]",
+  release: "border-[#31c7a2]/25 bg-[#31c7a2]/10 text-[#65ddbf]",
+  fa: "border-[#f2b84b]/25 bg-[#f2b84b]/10 text-[#ffd16b]",
+};
+
+const dispositionLabel: Record<DispositionAction, string> = {
+  hold: "HOLD",
+  release: "RELEASE",
+  fa: "FA",
+};
+
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
   const scenario = SCENARIOS[scenarioKey];
   const operations = TEST_OPERATIONS[scenarioKey];
+  const controlPlan = TEST_CONTROL_PLANS[scenarioKey];
   const [selectedTrend, setSelectedTrend] = useState(scenario.trend.length - 1);
   const [selectedDefect, setSelectedDefect] = useState(scenario.pareto[0].code);
   const [activeFlowStage, setActiveFlowStage] = useState<TestFlowStageKey>("final-test");
@@ -75,6 +91,8 @@ export function YieldDashboard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [review, setReview] = useState("");
   const [reviewState, setReviewState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [dispositions, setDispositions] = useState<LotDisposition[]>([]);
+  const [dispositionBusy, setDispositionBusy] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   function selectScenario(key: ScenarioKey) {
@@ -87,6 +105,7 @@ export function YieldDashboard() {
     setSelectedLots([]);
     setReview("");
     setReviewState("idle");
+    setDispositions([]);
   }
 
   useEffect(() => {
@@ -110,6 +129,22 @@ export function YieldDashboard() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDispositions() {
+      try {
+        const response = await fetch(`/api/quality/dispositions?scenario=${scenarioKey}`, { credentials: "include" });
+        if (!response.ok) return;
+        const data = (await response.json()) as LotDisposition[];
+        if (!cancelled) setDispositions(data);
+      } catch {
+        // The read view remains useful when the API is warming or unavailable.
+      }
+    }
+    void loadDispositions();
+    return () => { cancelled = true; };
+  }, [scenarioKey]);
+
   const filteredLots = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return scenario.lots;
@@ -128,6 +163,13 @@ export function YieldDashboard() {
   const trendMax = Math.max(...scenario.trend.map((point) => point.yield));
   const maxPareto = Math.max(...scenario.pareto.map((item) => item.count));
   const maxValidation = Math.max(...scenario.validation.series.map((item) => item.value));
+  const latestDispositionByLot = useMemo(() => {
+    const latest = new Map<string, LotDisposition>();
+    for (const item of dispositions) {
+      if (!latest.has(item.lot_id)) latest.set(item.lot_id, item);
+    }
+    return latest;
+  }, [dispositions]);
 
   function scrollTo(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -147,7 +189,7 @@ export function YieldDashboard() {
 
   function exportCsv() {
     const rows = [
-      ["lot_id", "product", "tool", "units", "yield_pct", "top_defect", "shift", "status"],
+      ["lot_id", "product", "tool", "units", "yield_pct", "top_defect", "shift", "status", "latest_disposition"],
       ...filteredLots.map((lot) => [
         lot.id,
         lot.product,
@@ -157,6 +199,7 @@ export function YieldDashboard() {
         lot.defect,
         lot.shift,
         lot.status,
+        latestDispositionByLot.get(lot.id)?.action ?? "none",
       ]),
     ];
     const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -188,6 +231,37 @@ export function YieldDashboard() {
       setNotice("검토 노트를 저장했습니다.");
     } catch {
       setReviewState("error");
+    }
+  }
+
+  async function createDisposition(lotId: string, action: DispositionAction, defect: string) {
+    const busyKey = `${lotId}:${action}`;
+    if (dispositionBusy) return;
+    setDispositionBusy(busyKey);
+    const reason = action === "hold"
+      ? `${defect} 원인 재현 및 교차 tester 확인 전 출하 보류`
+      : action === "fa"
+        ? `${defect} 표본을 FA 의뢰하고 package·die 원인 분리`
+        : `${defect} 확인 완료 · golden sample 및 출하 기준 충족`;
+    try {
+      const response = await fetch("/api/quality/dispositions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ scenario: scenarioKey, lot_id: lotId, action, reason, owner: "Test QE" }),
+      });
+      if (response.status === 401) {
+        window.location.href = signInHref();
+        return;
+      }
+      if (!response.ok) throw new Error("disposition failed");
+      const created = (await response.json()) as LotDisposition;
+      setDispositions((current) => [created, ...current]);
+      setNotice(`${lotId} · ${dispositionLabel[action]} 결정을 감사 로그에 기록했습니다.`);
+    } catch {
+      setNotice("결정 기록에 실패했습니다. API가 준비된 뒤 다시 시도해 주세요.");
+    } finally {
+      setDispositionBusy(null);
     }
   }
 
@@ -437,6 +511,17 @@ export function YieldDashboard() {
           <section id="test-ops" className="scroll-mt-24 pt-10">
             <SectionHeader number="02" title="Test Operations" description="Wafer·Package·Final Test의 손실을 한 흐름으로 연결하고, Bin·Retest·장비 상태를 근거로 다음 조치를 결정합니다." />
 
+            <Panel className="mt-5 overflow-hidden p-5 sm:p-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <PanelHeading eyebrow="TEST RELEASE CONTROL" title="양산 투입 전 Test Plan을 잠그는 화면" description="Databook / margin test → golden sample → tester correlation → 승인 기록의 순서로 release gate를 확인합니다." action={<span className="flex items-center gap-1.5 rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-2.5 py-1 text-[9px] text-[#a5d8f4]"><ShieldCheck className="size-3" /> controlled plan</span>} />
+                <div className="grid grid-cols-2 gap-2 text-[9px] sm:grid-cols-4"><PlanMeta label="PRODUCT" value={controlPlan.product} /><PlanMeta label="STAGE" value={controlPlan.testStage} /><PlanMeta label="PROGRAM" value={controlPlan.programRev} /><PlanMeta label="TAT TARGET" value={controlPlan.tatTarget} /></div>
+              </div>
+              <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0b1422]/65 p-3.5"><GitBranch className="size-3.5 text-[#f2b84b]" /><span className="text-[9px] font-semibold tracking-[0.08em] text-[#8998ac]">CONTROLLED FLOW</span><span className="text-[10px] text-[#d3deea]">{controlPlan.flow}</span><span className="ml-auto rounded-md bg-white/[0.04] px-2 py-1 text-[8px] text-[#728198]">{controlPlan.specProfile}</span></div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {controlPlan.gates.map((gate) => <div key={gate.label} className={`rounded-xl border p-3 ${gate.state === "pass" ? "border-[#31c7a2]/15 bg-[#31c7a2]/[0.04]" : gate.state === "watch" ? "border-[#f2b84b]/15 bg-[#f2b84b]/[0.04]" : "border-white/[0.07] bg-white/[0.018]"}`}><div className="flex items-center justify-between gap-2"><span className="text-[8px] text-[#718097]">{gate.label}</span><span className={`size-1.5 rounded-full ${gate.state === "pass" ? "bg-[#31c7a2]" : gate.state === "watch" ? "bg-[#f2b84b]" : "bg-[#69788e]"}`} /></div><p className="mt-2 text-[10px] font-medium text-[#d7e1ec]">{gate.value}</p><p className={`mt-1 text-[8px] uppercase tracking-[0.1em] ${gate.state === "pass" ? "text-[#68ddbf]" : gate.state === "watch" ? "text-[#ffd16b]" : "text-[#76859a]"}`}>{gate.state}</p></div>)}
+              </div>
+            </Panel>
+
             <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
               <Panel className="overflow-hidden p-5 sm:p-6">
                 <PanelHeading
@@ -582,18 +667,20 @@ export function YieldDashboard() {
 
             <Panel className="mt-4 overflow-hidden">
               <div className="flex flex-col gap-3 border-b border-white/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div><p className="text-[9px] font-semibold tracking-[0.14em] text-[#67768b]">LOT WATCHLIST</p><h3 className="mt-1 text-sm font-semibold">우선 확인 LOT</h3></div>
+                <div><p className="text-[9px] font-semibold tracking-[0.14em] text-[#67768b]">LOT WATCHLIST · DISPOSITION</p><h3 className="mt-1 text-sm font-semibold">우선 확인 LOT</h3><p className="mt-1 text-[9px] text-[#68778d]">Hold / Release / FA 결정은 로그인 후 감사 로그에 남습니다.</p></div>
                 <div className="flex flex-wrap items-center gap-2">
                   {selectedLots.length > 0 && <span className="rounded-lg border border-[#f2b84b]/20 bg-[#f2b84b]/[0.07] px-2.5 py-1.5 text-[9px] text-[#dcb45e]">{selectedLots.length}개 LOT 비교 선택</span>}
+                  {dispositions.length > 0 && <span className="rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-2.5 py-1.5 text-[9px] text-[#a6d7f3]">결정 로그 {dispositions.length}건</span>}
                   <button type="button" onClick={exportCsv} className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3 py-2 text-[9px] text-[#95a3b6] transition hover:text-white"><Download className="size-3" /> CSV 내보내기</button>
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-left">
-                  <thead><tr className="text-[8px] font-semibold tracking-[0.11em] text-[#59687e]">{["COMPARE", "LOT ID", "PRODUCT", "TOOL", "UNITS", "YIELD", "TOP DEFECT", "SHIFT", "STATE"].map((head) => <th key={head} className="bg-white/[0.018] px-4 py-3 first:pl-6">{head}</th>)}</tr></thead>
+                <table className="w-full min-w-[1010px] border-collapse text-left">
+                  <thead><tr className="text-[8px] font-semibold tracking-[0.11em] text-[#59687e]">{["COMPARE", "LOT ID", "PRODUCT", "TOOL", "UNITS", "YIELD", "TOP DEFECT", "SHIFT", "STATE", "DISPOSITION"].map((head) => <th key={head} className="bg-white/[0.018] px-4 py-3 first:pl-6">{head}</th>)}</tr></thead>
                   <tbody>
                     {filteredLots.map((lot) => {
                       const checked = selectedLots.includes(lot.id);
+                      const latest = latestDispositionByLot.get(lot.id);
                       return (
                         <tr key={lot.id} className={`border-t border-white/[0.05] text-[10px] transition hover:bg-white/[0.02] ${checked ? "bg-[#f2b84b]/[0.025]" : ""}`}>
                           <td className="px-4 py-3.5 pl-6"><button type="button" onClick={() => toggleLot(lot.id)} aria-label={`${lot.id} 비교 선택`} aria-pressed={checked} className={`grid size-4 place-items-center rounded border ${checked ? "border-[#f2b84b] bg-[#f2b84b] text-[#17110a]" : "border-white/15"}`}>{checked && <Check className="size-3" />}</button></td>
@@ -604,11 +691,12 @@ export function YieldDashboard() {
                           <td className={`px-4 py-3.5 font-medium tabular-nums ${lot.yield < 96.5 ? "text-[#ff8994]" : "text-[#b9c5d5]"}`}>{lot.yield.toFixed(2)}%</td>
                           <td className="px-4 py-3.5 text-[#a9b5c5]">{lot.defect}</td>
                           <td className="px-4 py-3.5 text-[#8290a5]">{lot.shift}</td>
-                          <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2 py-1 text-[8px] ${statusStyle[lot.status]}`}>{lot.status}</span></td>
+                          <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2 py-1 text-[8px] ${latest ? dispositionStyle[latest.action] : statusStyle[lot.status]}`}>{latest ? dispositionLabel[latest.action] : lot.status}</span></td>
+                          <td className="px-4 py-2.5"><div className="flex items-center gap-1.5"><DispositionButton label="Hold" action="hold" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "hold", lot.defect)} /><DispositionButton label="Release" action="release" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "release", lot.defect)} /><DispositionButton label="FA" action="fa" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "fa", lot.defect)} /></div></td>
                         </tr>
                       );
                     })}
-                    {filteredLots.length === 0 && <tr><td colSpan={9} className="px-6 py-12 text-center text-xs text-[#66758c]">현재 검색 조건에 맞는 LOT가 없습니다.</td></tr>}
+                    {filteredLots.length === 0 && <tr><td colSpan={10} className="px-6 py-12 text-center text-xs text-[#66758c]">현재 검색 조건에 맞는 LOT가 없습니다.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -719,8 +807,8 @@ export function YieldDashboard() {
 
               <Panel className="border-[#55b8f6]/12 bg-[linear-gradient(145deg,rgba(85,184,246,0.06),rgba(17,27,43,0.78))] p-5 sm:p-6">
                 <div className="flex items-center gap-2 text-[10px] font-medium text-[#9fd6f5]"><AlertCircle className="size-4" /> Portfolio disclosure</div>
-                <p className="mt-4 text-[10px] leading-5 text-[#7d8da3]">본 프로젝트는 공개 기술 자료를 참고한 <strong className="font-medium text-[#b7c4d4]">HBM-inspired 단순화 공정</strong>과 100% 합성 데이터로 구성했습니다.</p>
-                <p className="mt-3 text-[10px] leading-5 text-[#7d8da3]">표시된 수치·임계값·LOT·장비명은 실제 기업의 사양이나 내부 데이터가 아니며, 특정 기업과의 공식 제휴를 의미하지 않습니다.</p>
+                <p className="mt-4 text-[10px] leading-5 text-[#7d8da3]">공개 기술 자료를 참고한 <strong className="font-medium text-[#b7c4d4]">HBM-inspired 합성 데이터</strong>로 업무 흐름을 재현했습니다. 로그인 사용자의 LOT 결정은 실제 감사 로그 API에 저장됩니다.</p>
+                <p className="mt-3 text-[10px] leading-5 text-[#7d8da3]">표시된 수치·임계값·LOT·장비명은 실제 기업의 내부 사양이 아닙니다. 사내 MES·TMS·FA·Databook을 연결하기 전에는 운영 판단에 사용하지 마세요.</p>
               </Panel>
             </div>
           </section>
@@ -749,6 +837,15 @@ export function YieldDashboard() {
       {notice && <div role="status" aria-live="polite" className="fixed right-4 top-20 z-[60] max-w-sm rounded-xl border border-white/[0.1] bg-[#151f2e]/96 px-4 py-3 text-[10px] leading-5 text-[#c8d2df] shadow-2xl backdrop-blur-xl">{notice}</div>}
     </div>
   );
+}
+
+function DispositionButton({ label, action, lotId, busy, onClick }: { label: string; action: DispositionAction; lotId: string; busy: string | null; onClick: () => void }) {
+  const active = busy === `${lotId}:${action}`;
+  return <button type="button" onClick={onClick} disabled={Boolean(busy)} aria-label={`${lotId} ${label} 기록`} className={`rounded-md border px-2 py-1 text-[8px] font-medium transition disabled:cursor-wait disabled:opacity-45 ${action === "hold" ? "border-[#f36b78]/18 text-[#ff9aa3] hover:bg-[#f36b78]/10" : action === "release" ? "border-[#31c7a2]/18 text-[#67ddbf] hover:bg-[#31c7a2]/10" : "border-[#f2b84b]/18 text-[#ffd16b] hover:bg-[#f2b84b]/10"}`}>{active ? "…" : label}</button>;
+}
+
+function PlanMeta({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-lg border border-white/[0.06] bg-white/[0.018] px-3 py-2"><p className="text-[7px] font-semibold tracking-[0.1em] text-[#617087]">{label}</p><p className="mt-1 text-[9px] font-medium text-[#cbd6e3]">{value}</p></div>;
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {

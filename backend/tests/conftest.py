@@ -49,7 +49,10 @@ async def _truncate(_engine) -> AsyncIterator[None]:
     """Wipe tables before every test so order doesn't matter."""
     async with _engine.begin() as conn:
         await conn.execute(
-            text("TRUNCATE TABLE quality_reviews, users RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE TABLE lot_dispositions, quality_reviews, users "
+                "RESTART IDENTITY CASCADE"
+            )
         )
     yield
 

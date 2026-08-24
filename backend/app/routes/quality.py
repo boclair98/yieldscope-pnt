@@ -18,12 +18,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_session
 from app.core.identity import require_identity
-from app.models import QualityReview
+from app.models import LotDisposition, QualityReview
 from app.routes.users import upsert_local_user
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
 Scenario = Literal["stacker", "socket", "muf"]
+DispositionAction = Literal["hold", "release", "fa"]
 
 
 class ReviewIn(BaseModel):
@@ -39,6 +40,25 @@ class ReviewOut(BaseModel):
     created_at: str
 
 
+class DispositionIn(BaseModel):
+    scenario: Scenario
+    lot_id: str = Field(min_length=1, max_length=32)
+    action: DispositionAction
+    reason: str = Field(min_length=1, max_length=300)
+    owner: str = Field(min_length=1, max_length=64)
+
+
+class DispositionOut(BaseModel):
+    id: str
+    scenario: str
+    lot_id: str
+    action: str
+    reason: str
+    owner: str
+    author_name: str
+    created_at: str
+
+
 def _to_out(review: QualityReview) -> ReviewOut:
     return ReviewOut(
         id=str(review.id),
@@ -46,6 +66,19 @@ def _to_out(review: QualityReview) -> ReviewOut:
         note=review.note,
         author_name=review.author.display_name,
         created_at=review.created_at.isoformat(),
+    )
+
+
+def _to_disposition_out(item: LotDisposition) -> DispositionOut:
+    return DispositionOut(
+        id=str(item.id),
+        scenario=item.scenario,
+        lot_id=item.lot_id,
+        action=item.action,
+        reason=item.reason,
+        owner=item.owner,
+        author_name=item.author.display_name,
+        created_at=item.created_at.isoformat(),
     )
 
 
@@ -86,3 +119,45 @@ async def create_review(
         .where(QualityReview.id == review.id)
     )
     return _to_out(result.scalar_one())
+
+
+@router.get("/dispositions", response_model=list[DispositionOut])
+async def list_dispositions(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scenario: Scenario | None = None,
+) -> list[DispositionOut]:
+    query = (
+        select(LotDisposition)
+        .options(selectinload(LotDisposition.author))
+        .order_by(desc(LotDisposition.created_at))
+        .limit(100)
+    )
+    if scenario is not None:
+        query = query.where(LotDisposition.scenario == scenario)
+    result = await session.execute(query)
+    return [_to_disposition_out(item) for item in result.scalars().all()]
+
+
+@router.post("/dispositions", response_model=DispositionOut, status_code=201)
+async def create_disposition(
+    body: DispositionIn,
+    coders_id: Annotated[UUID, Depends(require_identity)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DispositionOut:
+    user = await upsert_local_user(session, coders_id)
+    item = LotDisposition(
+        author_id=user.id,
+        scenario=body.scenario,
+        lot_id=body.lot_id.strip(),
+        action=body.action,
+        reason=body.reason.strip(),
+        owner=body.owner.strip(),
+    )
+    session.add(item)
+    await session.flush()
+    result = await session.execute(
+        select(LotDisposition)
+        .options(selectinload(LotDisposition.author))
+        .where(LotDisposition.id == item.id)
+    )
+    return _to_disposition_out(result.scalar_one())

@@ -334,6 +334,74 @@ export type TestOperations = {
   handoff: Array<{ label: string; value: string; detail: string; tone: "good" | "warn" | "alert" }>;
 };
 
+export type DispositionAction = "hold" | "release" | "fa";
+
+export type LotDisposition = {
+  id: string;
+  scenario: ScenarioKey;
+  lot_id: string;
+  action: DispositionAction;
+  reason: string;
+  owner: string;
+  author_name: string;
+  created_at: string;
+};
+
+export type TestControlPlan = {
+  product: string;
+  testStage: string;
+  programRev: string;
+  specProfile: string;
+  tatTarget: string;
+  flow: string;
+  gates: Array<{ label: string; value: string; state: "pass" | "watch" | "pending" }>;
+};
+
+export const TEST_CONTROL_PLANS: Record<ScenarioKey, TestControlPlan> = {
+  stacker: {
+    product: "Stacked-M8 / HBM-inspired",
+    testStage: "Package + Final Test",
+    programRev: "FT-M8-042",
+    specProfile: "DB-M8-2026.08",
+    tatTarget: "≤ 18 h",
+    flow: "EPM → WBI → WT / Repair → Package Test → Module Test",
+    gates: [
+      { label: "Databook / margin", value: "DB-M8-2026.08", state: "pass" },
+      { label: "Golden sample", value: "30 pcs / shift", state: "pass" },
+      { label: "Tester correlation", value: "94% reproduce", state: "pass" },
+      { label: "Release approval", value: "Test QE sign-off", state: "watch" },
+    ],
+  },
+  socket: {
+    product: "HBM-Socket evaluation lot",
+    testStage: "Final Test",
+    programRev: "FT-HBM-118",
+    specProfile: "DB-HBM-2026.07",
+    tatTarget: "≤ 12 h",
+    flow: "EPM → WBI → WT / Repair → Package Test → Module Test",
+    gates: [
+      { label: "DC / AC / Function", value: "3-bin coverage", state: "pass" },
+      { label: "Socket contact", value: "≤ 30 mΩ", state: "watch" },
+      { label: "Retest policy", value: "B41 1-cycle", state: "pass" },
+      { label: "Release approval", value: "PM sign-off", state: "pending" },
+    ],
+  },
+  muf: {
+    product: "Stacked-M12 / MUF qualification",
+    testStage: "Package + Reliability Test",
+    programRev: "FT-M12-205",
+    specProfile: "DB-M12-2026.08",
+    tatTarget: "≤ 24 h",
+    flow: "EPM → WBI → WT / Repair → Package Test → Module Test",
+    gates: [
+      { label: "Databook / margin", value: "DB-M12-2026.08", state: "pass" },
+      { label: "SAM correlation", value: "B55 ↔ delam", state: "watch" },
+      { label: "Cross-section", value: "4 / 5 confirmed", state: "pass" },
+      { label: "Material release", value: "MUF-24B hold", state: "pending" },
+    ],
+  },
+};
+
 const FLOW_LABELS: Record<TestFlowStageKey, string> = {
   "wafer-sort": "Wafer Sort",
   "package-test": "Package Test",

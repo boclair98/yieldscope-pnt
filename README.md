@@ -16,6 +16,8 @@ FA 증거, CAPA 개선 효과를 설명하도록 설계했습니다.
 - 일별 final-yield p-chart와 관리 한계 이탈 드릴다운
 - Wafer Sort → Package Test → Burn-in → Final Test → Reliability 단계별 FPY·DPPM·Retest recovery·UPH·utilization 흐름
 - Bin / Retest triage, tester·socket cycle/contact·program revision·PM 상태, 교대 인수인계 exit criteria
+- EPM → Wafer Burn-in → Wafer Test / Repair → Package Test → Module Test 기반의 Test release gate
+- LOT별 Hold / Release / FA 결정과 사유·담당자·시각을 저장하는 감사 로그 API
 - 결함 발생 건수 Pareto, 누적 기여도, 공정·장비 risk ratio
 - 검색 가능한 LOT watchlist, 최대 3개 LOT 비교, CSV 내보내기
 - `Suspected → Corroborated → Confirmed` 상태를 갖는 RCA 근거 체인
@@ -28,7 +30,9 @@ FA 증거, CAPA 개선 효과를 설명하도록 설계했습니다.
 이 프로젝트의 LOT, 장비, 수치, 임계값, 제품명은 모두 포트폴리오용
 합성 데이터입니다. 공개 기술 설명을 참고한 HBM-inspired 단순화 공정이며,
 실제 기업의 사양·내부 데이터·공식 시스템이 아닙니다. 특정 기업과의 제휴나
-공식성을 나타내지 않습니다.
+공식성을 나타내지 않습니다. 실제 적용 시에는 사내 MES·TMS·FA 시스템의
+권한·데이터 계약·Databook 기준을 연결하고, release gate를 조직 승인 절차에
+맞춰 별도 검증해야 합니다.
 
 ## 기술 구성
 

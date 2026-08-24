@@ -41,6 +41,9 @@ class User(Base):
     quality_reviews: Mapped[list["QualityReview"]] = relationship(
         back_populates="author", cascade="all, delete-orphan"
     )
+    lot_dispositions: Mapped[list["LotDisposition"]] = relationship(
+        back_populates="author", cascade="all, delete-orphan"
+    )
 
 
 class QualityReview(Base):
@@ -61,3 +64,26 @@ class QualityReview(Base):
     )
 
     author: Mapped[User] = relationship(back_populates="quality_reviews")
+
+
+class LotDisposition(Base):
+    """Auditable lot action taken by an authenticated engineer."""
+
+    __tablename__ = "lot_dispositions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scenario: Mapped[str] = mapped_column(sa.String(16), nullable=False, index=True)
+    lot_id: Mapped[str] = mapped_column(sa.String(32), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(sa.String(300), nullable=False)
+    owner: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now(), index=True
+    )
+
+    author: Mapped[User] = relationship(back_populates="lot_dispositions")
