@@ -1,35 +1,36 @@
 "use client";
 
 import {
-  Activity,
   AlertCircle,
   AlertTriangle,
-  ArrowDownRight,
   ArrowRight,
   BarChart3,
   Check,
   CheckCircle2,
-  ChevronDown,
   CircleDot,
   ClipboardCheck,
   Clock3,
+  Cpu,
   Download,
   ExternalLink,
   FileText,
   FlaskConical,
+  GitBranch,
   Gauge,
   Layers3,
   LogIn,
   Microscope,
+  Network,
   PanelLeft,
-  Printer,
   RotateCcw,
   Search,
   ShieldCheck,
   Sparkles,
   Target,
   TestTube2,
+  Timer,
   TrendingDown,
+  Wrench,
   X,
   Zap,
 } from "lucide-react";
@@ -40,11 +41,14 @@ import {
   METRIC_DEFINITIONS,
   SCENARIO_ORDER,
   SCENARIOS,
+  TEST_OPERATIONS,
+  type TestFlowStageKey,
   type ScenarioKey,
 } from "@/lib/quality";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: Gauge },
+  { id: "test-ops", label: "Test Operations", icon: GitBranch },
   { id: "defects", label: "Defect Explorer", icon: BarChart3 },
   { id: "rca", label: "RCA Workbench", icon: Microscope },
   { id: "validation", label: "Action Validation", icon: ClipboardCheck },
@@ -60,8 +64,11 @@ const statusStyle: Record<string, string> = {
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
   const scenario = SCENARIOS[scenarioKey];
+  const operations = TEST_OPERATIONS[scenarioKey];
   const [selectedTrend, setSelectedTrend] = useState(scenario.trend.length - 1);
   const [selectedDefect, setSelectedDefect] = useState(scenario.pareto[0].code);
+  const [activeFlowStage, setActiveFlowStage] = useState<TestFlowStageKey>("final-test");
+  const [selectedBin, setSelectedBin] = useState(operations.bins[0].code);
   const [query, setQuery] = useState("");
   const [selectedLots, setSelectedLots] = useState<string[]>([]);
   const [mobileNav, setMobileNav] = useState(false);
@@ -70,13 +77,17 @@ export function YieldDashboard() {
   const [reviewState, setReviewState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const searchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setSelectedTrend(scenario.trend.length - 1);
-    setSelectedDefect(scenario.pareto[0].code);
+  function selectScenario(key: ScenarioKey) {
+    const nextScenario = SCENARIOS[key];
+    setScenarioKey(key);
+    setSelectedTrend(nextScenario.trend.length - 1);
+    setSelectedDefect(nextScenario.pareto[0].code);
+    setActiveFlowStage("final-test");
+    setSelectedBin(TEST_OPERATIONS[key].bins[0].code);
     setSelectedLots([]);
     setReview("");
     setReviewState("idle");
-  }, [scenario, scenarioKey]);
+  }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -111,6 +122,8 @@ export function YieldDashboard() {
   }, [query, scenario.lots]);
 
   const selectedPoint = scenario.trend[selectedTrend];
+  const activeStage = operations.stages.find((stage) => stage.key === activeFlowStage) ?? operations.stages[3];
+  const activeBin = operations.bins.find((bin) => bin.code === selectedBin) ?? operations.bins[0];
   const trendMin = Math.min(...scenario.trend.map((point) => point.yield));
   const trendMax = Math.max(...scenario.trend.map((point) => point.yield));
   const maxPareto = Math.max(...scenario.pareto.map((item) => item.count));
@@ -283,7 +296,7 @@ export function YieldDashboard() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => { setScenarioKey(key); scrollTo("overview"); }}
+                    onClick={() => { selectScenario(key); scrollTo("overview"); }}
                     className={`w-full rounded-xl border p-3 text-left transition ${active ? "border-[#f2b84b]/25 bg-[#f2b84b]/[0.07]" : "border-transparent hover:border-white/[0.07] hover:bg-white/[0.025]"}`}
                   >
                     <span className={`text-[9px] font-semibold tracking-[0.12em] ${active ? "text-[#dcb45e]" : "text-[#5f6e84]"}`}>CASE 0{index + 1}</span>
@@ -325,7 +338,7 @@ export function YieldDashboard() {
             <div className="mt-6 flex gap-2 overflow-x-auto pb-1 sm:hidden">
               {SCENARIO_ORDER.map((key) => {
                 const item = SCENARIOS[key];
-                return <button key={key} type="button" onClick={() => setScenarioKey(key)} className={`shrink-0 rounded-full border px-3 py-2 text-[11px] ${key === scenarioKey ? "border-[#f2b84b]/40 bg-[#f2b84b]/10 text-[#ffd16b]" : "border-white/[0.08] text-[#8593a8]"}`}>{item.shortLabel}</button>;
+                return <button key={key} type="button" onClick={() => selectScenario(key)} className={`shrink-0 rounded-full border px-3 py-2 text-[11px] ${key === scenarioKey ? "border-[#f2b84b]/40 bg-[#f2b84b]/10 text-[#ffd16b]" : "border-white/[0.08] text-[#8593a8]"}`}>{item.shortLabel}</button>;
               })}
             </div>
 
@@ -421,8 +434,110 @@ export function YieldDashboard() {
             </div>
           </section>
 
+          <section id="test-ops" className="scroll-mt-24 pt-10">
+            <SectionHeader number="02" title="Test Operations" description="Wafer·Package·Final Test의 손실을 한 흐름으로 연결하고, Bin·Retest·장비 상태를 근거로 다음 조치를 결정합니다." />
+
+            <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
+              <Panel className="overflow-hidden p-5 sm:p-6">
+                <PanelHeading
+                  eyebrow="MASS PRODUCTION TEST FLOW"
+                  title="공정 단계별 수율·Capacity"
+                  description={operations.focus}
+                  action={<span className="rounded-lg border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1 text-[9px] font-medium text-[#6bdfc1]">{operations.window}</span>}
+                />
+
+                <div className="mt-6 grid gap-2 md:grid-cols-5">
+                  {operations.stages.map((stage, index) => {
+                    const active = stage.key === activeFlowStage;
+                    const statusClass = stage.status === "hold" ? "text-[#ff8e99]" : stage.status === "watch" ? "text-[#ffd16b]" : "text-[#68ddbf]";
+                    return (
+                      <button
+                        key={stage.key}
+                        type="button"
+                        onClick={() => setActiveFlowStage(stage.key)}
+                        aria-pressed={active}
+                        className={`relative rounded-xl border p-3 text-left transition ${active ? "border-[#f2b84b]/45 bg-[#f2b84b]/[0.09] shadow-[0_0_0_1px_rgba(242,184,75,0.08)]" : "border-white/[0.07] bg-white/[0.018] hover:border-white/[0.15]"}`}
+                      >
+                        {index < operations.stages.length - 1 && <ArrowRight className="absolute -right-3 top-7 z-10 hidden size-4 text-[#4e6078] md:block" />}
+                        <span className="flex items-center justify-between gap-2"><span className={`text-[8px] font-semibold tracking-[0.08em] ${active ? "text-[#ffd16b]" : "text-[#617087]"}`}>0{index + 1}</span><span className={`size-1.5 rounded-full ${stage.status === "hold" ? "bg-[#f36b78]" : stage.status === "watch" ? "bg-[#f2b84b]" : "bg-[#31c7a2]"}`} /></span>
+                        <span className="mt-3 block text-[10px] font-semibold text-[#d8e2ee]">{stage.label}</span>
+                        <span className="mt-1 block text-[8px] text-[#68778d]">{stage.subtitle}</span>
+                        <span className={`mt-3 block text-[11px] font-semibold tabular-nums ${statusClass}`}>{stage.fpy.toFixed(2)}% FPY</span>
+                        <span className="mt-1 block text-[8px] text-[#64738a]">{stage.loss} · {stage.owner}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 grid gap-4 border-t border-white/[0.06] pt-5 lg:grid-cols-[minmax(0,1fr)_190px]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="rounded-md border border-[#55b8f6]/20 bg-[#55b8f6]/[0.07] px-2 py-1 text-[8px] font-semibold tracking-[0.1em] text-[#a2d6f2]">{activeStage.label.toUpperCase()}</span><span className="text-[10px] text-[#8190a5]">{activeStage.note}</span></div>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <OpsMetric label="Input" value={activeStage.input.toLocaleString()} unit="pcs" />
+                      <OpsMetric label="Tested" value={activeStage.tested.toLocaleString()} unit="pcs" />
+                      <OpsMetric label="DPPM" value={activeStage.dppm.toLocaleString()} unit="" alert={activeStage.dppm > 15000} />
+                      <OpsMetric label="Retest recovery" value={`${activeStage.retestRecovery}`} unit="%" good={activeStage.retestRecovery >= 60} />
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.06] bg-[#0b1422]/65 p-3.5">
+                    <p className="text-[8px] font-semibold tracking-[0.1em] text-[#65748a]">CAPACITY SIGNAL</p>
+                    <div className="mt-3 flex items-end justify-between gap-3"><span className="text-[22px] font-semibold tracking-[-0.04em] text-[#e4ebf5]">{activeStage.uph.toLocaleString()}</span><span className="pb-1 text-[9px] text-[#78879b]">UPH</span></div>
+                    <div className="mt-3 flex items-center justify-between text-[9px]"><span className="text-[#69788e]">Tester utilization</span><span className="font-semibold tabular-nums text-[#cbd6e3]">{activeStage.utilization}%</span></div>
+                    <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><span className={`block h-full rounded-full ${activeStage.utilization >= 85 ? "bg-[#f2b84b]" : "bg-[#31c7a2]"}`} style={{ width: `${activeStage.utilization}%` }} /></span>
+                    <div className="mt-3 flex items-center justify-between text-[9px]"><span className="flex items-center gap-1.5 text-[#69788e]"><Timer className="size-3" /> Test time</span><span className="tabular-nums text-[#cbd6e3]">{activeStage.testTime.toFixed(2)} sec</span></div>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel className="p-5 sm:p-6">
+                <PanelHeading eyebrow="SHIFT HANDOFF" title="다음 교대가 바로 실행할 항목" description="현상 설명보다 containment·확인 조건·종료 기준을 남깁니다." />
+                <div className="mt-5 space-y-3">
+                  {operations.handoff.map((item) => (
+                    <div key={item.label} className={`rounded-xl border p-3.5 ${item.tone === "alert" ? "border-[#f36b78]/18 bg-[#f36b78]/[0.045]" : item.tone === "warn" ? "border-[#f2b84b]/18 bg-[#f2b84b]/[0.045]" : "border-[#31c7a2]/18 bg-[#31c7a2]/[0.045]"}`}>
+                      <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold tracking-[0.12em] text-[#78879c]">{item.label}</span><span className={`size-1.5 rounded-full ${item.tone === "alert" ? "bg-[#f36b78]" : item.tone === "warn" ? "bg-[#f2b84b]" : "bg-[#31c7a2]"}`} /></div>
+                      <p className="mt-2 text-[12px] font-semibold text-[#dce5ef]">{item.value}</p><p className="mt-1 text-[9px] leading-5 text-[#728197]">{item.detail}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-xl border border-[#55b8f6]/14 bg-[#55b8f6]/[0.04] p-3.5 text-[9px] leading-5 text-[#8294aa]"><span className="font-medium text-[#addaf4]">P&amp;T 관점</span> · 수율만 올리는 조치가 아니라 품질·Capacity·재현성의 exit criteria를 같이 닫습니다.</div>
+              </Panel>
+            </div>
+
+            <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <Panel className="overflow-hidden p-5 sm:p-6">
+                <PanelHeading eyebrow="BIN &amp; RETEST TRIAGE" title="First fail을 원인 방향으로 분리" description="Retest recovery가 높으면 contact·program testability를 먼저 확인하고, 낮으면 package·die FA로 승격합니다." action={<span className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-2 py-1 text-[9px] text-[#8594a9]"><Network className="size-3" /> {activeBin.code} selected</span>} />
+                <div className="mt-5 overflow-x-auto rounded-xl border border-white/[0.06]">
+                  <table className="w-full min-w-[580px] border-collapse text-left">
+                    <thead><tr className="text-[8px] font-semibold tracking-[0.1em] text-[#59687e]"><th className="bg-white/[0.02] px-3 py-2.5">BIN / FAMILY</th><th className="bg-white/[0.02] px-3 py-2.5 text-right">FIRST FAIL</th><th className="bg-white/[0.02] px-3 py-2.5 text-right">RETEST PASS</th><th className="bg-white/[0.02] px-3 py-2.5 text-right">SHARE</th><th className="bg-white/[0.02] px-3 py-2.5 text-right">DISPOSITION</th></tr></thead>
+                    <tbody>
+                      {operations.bins.map((bin) => {
+                        const active = bin.code === selectedBin;
+                        const dispositionClass = bin.disposition === "FA" ? "text-[#ff9aa3] bg-[#f36b78]/10" : bin.disposition === "HOLD" ? "text-[#ffd16b] bg-[#f2b84b]/10" : bin.disposition === "RETEST" ? "text-[#9bd5f3] bg-[#55b8f6]/10" : "text-[#6ddfc3] bg-[#31c7a2]/10";
+                        return <tr key={bin.code} className={`cursor-pointer border-t border-white/[0.05] transition hover:bg-white/[0.025] ${active ? "bg-[#f2b84b]/[0.035]" : ""}`} onClick={() => setSelectedBin(bin.code)}><td className="px-3 py-3"><span className="block text-[10px] font-semibold text-[#d8e2ee]">{bin.code} · {bin.label}</span><span className="mt-1 block text-[8px] tracking-[0.08em] text-[#64738a]">{bin.family}</span></td><td className="px-3 py-3 text-right text-[10px] tabular-nums text-[#b7c4d4]">{bin.firstFail}</td><td className="px-3 py-3 text-right text-[10px] font-semibold tabular-nums text-[#d8e2ee]">{bin.retestPass}%</td><td className="px-3 py-3 text-right text-[10px] tabular-nums text-[#8796aa]">{bin.share}%</td><td className="px-3 py-3 text-right"><span className={`inline-flex rounded-md px-1.5 py-1 text-[8px] font-semibold ${dispositionClass}`}>{bin.disposition}</span></td></tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex gap-3 rounded-xl border border-white/[0.06] bg-white/[0.018] p-3.5"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#f2b84b]/10 text-[#ffd16b]"><AlertTriangle className="size-3.5" /></span><div><p className="text-[10px] font-medium text-[#d2dce8]">{activeBin.code} · {activeBin.label}</p><p className="mt-1 text-[9px] leading-5 text-[#718097]">{activeBin.note} · 현재 우선 판정은 <span className="font-medium text-[#cbd7e4]">{activeBin.disposition}</span>입니다.</p></div></div>
+              </Panel>
+
+              <Panel className="overflow-hidden p-5 sm:p-6">
+                <PanelHeading eyebrow="TESTER / SOCKET HEALTH" title="장비 조건이 수율을 흔드는지 확인" description="Program revision·socket cycle·contact resistance·PM due를 같은 화면에서 교차 확인합니다." action={<span className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-2 py-1 text-[9px] text-[#8594a9]"><Wrench className="size-3" /> live snapshot</span>} />
+                <div className="mt-5 space-y-2.5">
+                  {operations.assets.map((asset) => (
+                    <div key={asset.id} className="rounded-xl border border-white/[0.06] bg-white/[0.018] p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><span className={`grid size-7 place-items-center rounded-lg ${asset.status === "점검" ? "bg-[#f36b78]/10 text-[#ff9ba4]" : asset.status === "주의" ? "bg-[#f2b84b]/10 text-[#ffd16b]" : "bg-[#31c7a2]/10 text-[#67ddbf]"}`}><Cpu className="size-3.5" /></span><div><p className="text-[10px] font-semibold text-[#d8e2ee]">{asset.id}</p><p className="text-[8px] text-[#68778d]">{asset.type} · {asset.program}</p></div></div><span className={`rounded-md px-1.5 py-1 text-[8px] ${asset.status === "점검" ? "bg-[#f36b78]/10 text-[#ff9ba4]" : asset.status === "주의" ? "bg-[#f2b84b]/10 text-[#ffd16b]" : "bg-[#31c7a2]/10 text-[#67ddbf]"}`}>{asset.status}</span></div>
+                      <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2 text-[9px] sm:grid-cols-4"><span><em className="not-italic text-[#59687e]">Socket</em><strong className="ml-1.5 font-medium text-[#aebdcd]">{asset.socket}</strong></span><span><em className="not-italic text-[#59687e]">Cycle</em><strong className="ml-1.5 font-medium tabular-nums text-[#aebdcd]">{asset.cycles.toLocaleString()}</strong></span><span><em className="not-italic text-[#59687e]">Contact</em><strong className={`ml-1.5 font-medium tabular-nums ${asset.contact > 40 ? "text-[#ff9aa4]" : "text-[#aebdcd]"}`}>{asset.contact ? `${asset.contact} mΩ` : "N/A"}</strong></span><span><em className="not-italic text-[#59687e]">PM</em><strong className={`ml-1.5 font-medium ${asset.pmDue === "D-1" || asset.pmDue === "D-2" ? "text-[#ffd16b]" : "text-[#aebdcd]"}`}>{asset.pmDue}</strong></span></div>
+                      <div className="mt-3 flex items-center gap-2"><span className="text-[8px] text-[#5f6e84]">Utilization</span><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.055]"><span className="block h-full rounded-full bg-[#55b8f6]" style={{ width: `${asset.utilization}%` }} /></span><span className="w-7 text-right text-[8px] tabular-nums text-[#9eacbd]">{asset.utilization}%</span></div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+          </section>
+
           <section id="defects" className="scroll-mt-24 pt-10">
-            <SectionHeader number="02" title="Defect Explorer" description="불량 구성과 장비 집중도를 함께 보며 손실의 80%를 만드는 구간부터 좁힙니다." />
+            <SectionHeader number="03" title="Defect Explorer" description="불량 구성과 장비 집중도를 함께 보며 손실의 80%를 만드는 구간부터 좁힙니다." />
             <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
               <Panel className="p-5 sm:p-6">
                 <PanelHeading eyebrow="DEFECT OCCURRENCES" title="불량 Pareto" description="결함 발생 건수 기준 · 불량품 수와 중복될 수 있음" action={<span className="text-[10px] text-[#6d7c92]">총 {scenario.pareto.reduce((sum, item) => sum + item.count, 0).toLocaleString()}건</span>} />
@@ -501,7 +616,7 @@ export function YieldDashboard() {
           </section>
 
           <section id="rca" className="scroll-mt-24 pt-10">
-            <SectionHeader number="03" title="RCA Workbench" description="데이터 연관성을 출발점으로, 재현 시험과 물리 분석이 일치할 때만 원인 상태를 승격합니다." />
+            <SectionHeader number="04" title="RCA Workbench" description="데이터 연관성을 출발점으로, 재현 시험과 물리 분석이 일치할 때만 원인 상태를 승격합니다." />
             <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <Panel className="p-5 sm:p-6">
                 <PanelHeading eyebrow="CONTRIBUTING FACTORS" title="기여 요인 후보" description="층화 비교 → 교차 재현 → 물리 증거 순으로 신뢰도 계산" />
@@ -547,7 +662,7 @@ export function YieldDashboard() {
           </section>
 
           <section id="validation" className="scroll-mt-24 pt-10">
-            <SectionHeader number="04" title="Action Validation" description="Containment로 영향을 차단하고, Corrective·Preventive action의 개선 폭과 재발 여부를 검증합니다." />
+            <SectionHeader number="05" title="Action Validation" description="Containment로 영향을 차단하고, Corrective·Preventive action의 개선 폭과 재발 여부를 검증합니다." />
             <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
               <Panel className="p-5 sm:p-6">
                 <PanelHeading
@@ -650,6 +765,10 @@ function SectionHeader({ number, title, description }: { number: string; title: 
 
 function DataPoint({ label, value, accent, good }: { label: string; value: string; accent?: boolean; good?: boolean }) {
   return <div className="rounded-xl border border-white/[0.055] bg-white/[0.022] p-3"><p className="text-[8px] text-[#617087]">{label}</p><p className={`mt-1.5 text-[12px] font-semibold tabular-nums ${accent ? "text-[#ff8e99]" : good ? "text-[#62dbbd]" : "text-[#d6dfeb]"}`}>{value}</p></div>;
+}
+
+function OpsMetric({ label, value, unit, good, alert }: { label: string; value: string; unit: string; good?: boolean; alert?: boolean }) {
+  return <div className="rounded-xl border border-white/[0.055] bg-white/[0.022] p-3"><p className="text-[8px] text-[#617087]">{label}</p><p className={`mt-1.5 text-[13px] font-semibold tabular-nums ${alert ? "text-[#ff9aa3]" : good ? "text-[#68ddbf]" : "text-[#d6dfeb]"}`}>{value}<span className="ml-1 text-[8px] font-normal text-[#6f7f94]">{unit}</span></p></div>;
 }
 
 function StateBadge({ state }: { state: "Suspected" | "Corroborated" | "Confirmed" }) {

@@ -14,6 +14,8 @@ FA 증거, CAPA 개선 효과를 설명하도록 설계했습니다.
   - Socket 접촉 열화와 false reject
   - MUF material/process excursion과 delamination
 - 일별 final-yield p-chart와 관리 한계 이탈 드릴다운
+- Wafer Sort → Package Test → Burn-in → Final Test → Reliability 단계별 FPY·DPPM·Retest recovery·UPH·utilization 흐름
+- Bin / Retest triage, tester·socket cycle/contact·program revision·PM 상태, 교대 인수인계 exit criteria
 - 결함 발생 건수 Pareto, 누적 기여도, 공정·장비 risk ratio
 - 검색 가능한 LOT watchlist, 최대 3개 LOT 비교, CSV 내보내기
 - `Suspected → Corroborated → Confirmed` 상태를 갖는 RCA 근거 체인

@@ -280,3 +280,154 @@ export const METRIC_DEFINITIONS = [
   ["Retest recovery", "최초 fail 후 재검에서 pass한 수량 ÷ 최초 fail 수량"],
   ["Risk ratio", "특정 조건의 불량률 ÷ 비교 기준 불량률"],
 ];
+
+export type TestFlowStageKey = "wafer-sort" | "package-test" | "burn-in" | "final-test" | "reliability";
+
+export type TestFlowStage = {
+  key: TestFlowStageKey;
+  label: string;
+  subtitle: string;
+  input: number;
+  tested: number;
+  fpy: number;
+  retestRecovery: number;
+  dppm: number;
+  testTime: number;
+  uph: number;
+  utilization: number;
+  status: "stable" | "watch" | "hold";
+  loss: string;
+  owner: string;
+  note: string;
+};
+
+export type TestBin = {
+  code: string;
+  label: string;
+  family: string;
+  firstFail: number;
+  retestPass: number;
+  share: number;
+  disposition: "RETEST" | "FA" | "HOLD" | "PASS";
+  note: string;
+};
+
+export type TestAsset = {
+  id: string;
+  type: string;
+  program: string;
+  socket: string;
+  cycles: number;
+  contact: number;
+  pmDue: string;
+  utilization: number;
+  status: "정상" | "주의" | "점검";
+};
+
+export type TestOperations = {
+  focus: string;
+  window: string;
+  sample: string;
+  stages: TestFlowStage[];
+  bins: TestBin[];
+  assets: TestAsset[];
+  handoff: Array<{ label: string; value: string; detail: string; tone: "good" | "warn" | "alert" }>;
+};
+
+const FLOW_LABELS: Record<TestFlowStageKey, string> = {
+  "wafer-sort": "Wafer Sort",
+  "package-test": "Package Test",
+  "burn-in": "Burn-in",
+  "final-test": "Final Test",
+  reliability: "Reliability",
+};
+
+export const TEST_OPERATIONS: Record<ScenarioKey, TestOperations> = {
+  stacker: {
+    focus: "Open / High-R가 Final Test에서 감지되지만, Package Test의 접합 품질과 교차 확인해야 하는 케이스",
+    window: "08.05—08.18 · 32,840 units",
+    sample: "Golden 30 pcs / LOT · 교대별 1회",
+    stages: [
+      { key: "wafer-sort", label: FLOW_LABELS["wafer-sort"], subtitle: "Wafer map", input: 41200, tested: 41180, fpy: 99.41, retestRecovery: 42, dppm: 5900, testTime: 0.82, uph: 4380, utilization: 78, status: "stable", loss: "−0.12%p", owner: "WS-02", note: "wafer map와 package fail 위치의 상관을 주간 단위로 확인" },
+      { key: "package-test", label: FLOW_LABELS["package-test"], subtitle: "Interconnect", input: 41180, tested: 41180, fpy: 98.72, retestRecovery: 58, dppm: 12800, testTime: 1.46, uph: 2460, utilization: 72, status: "watch", loss: "−0.69%p", owner: "PKG-FT-02", note: "X-ray offset +2.5 μm 표본과 Open bin 위치를 매칭" },
+      { key: "burn-in", label: FLOW_LABELS["burn-in"], subtitle: "Stress screen", input: 40653, tested: 40653, fpy: 99.08, retestRecovery: 31, dppm: 9200, testTime: 18.4, uph: 196, utilization: 84, status: "stable", loss: "−0.31%p", owner: "BI-01", note: "stress 이후 재발하는 latent fail 여부만 분리 추적" },
+      { key: "final-test", label: FLOW_LABELS["final-test"], subtitle: "DC / AC / Func", input: 40280, tested: 40280, fpy: 98.07, retestRecovery: 63, dppm: 19300, testTime: 2.18, uph: 1650, utilization: 81, status: "watch", loss: "−0.86%p", owner: "TST-04", note: "alternate tester 94% 재현으로 testability보다 package 원인 우선" },
+      { key: "reliability", label: FLOW_LABELS.reliability, subtitle: "HTOL / temp", input: 39802, tested: 1200, fpy: 99.84, retestRecovery: 18, dppm: 1600, testTime: 42.0, uph: 68, utilization: 63, status: "stable", loss: "−0.04%p", owner: "REL-03", note: "교정 후 10 LOT의 reliability escape 신호 없음" },
+    ],
+    bins: [
+      { code: "B07", label: "Open / High-R", family: "CONTACT / FUNC", firstFail: 382, retestPass: 18, share: 47, disposition: "FA", note: "alternate tester에서도 94% 재현" },
+      { code: "B12", label: "Misalignment", family: "PACKAGE", firstFail: 154, retestPass: 12, share: 19, disposition: "FA", note: "X-ray offset와 동일 위치" },
+      { code: "B03", label: "Bridge / Short", family: "DC", firstFail: 98, retestPass: 44, share: 12, disposition: "RETEST", note: "probe mark 확인 후 재검" },
+      { code: "B21", label: "Die crack", family: "RELIABILITY", firstFail: 73, retestPass: 6, share: 9, disposition: "HOLD", note: "단면 분석 표본 선정" },
+      { code: "B99", label: "Other", family: "ETC", firstFail: 106, retestPass: 52, share: 13, disposition: "PASS", note: "Golden sample과 분리 모니터링" },
+    ],
+    assets: [
+      { id: "TST-04", type: "Final tester", program: "FT-M8-042", socket: "SCK-12A", cycles: 18420, contact: 28.4, pmDue: "D-3", utilization: 81, status: "주의" },
+      { id: "TST-06", type: "Final tester", program: "FT-M8-042", socket: "SCK-12B", cycles: 9210, contact: 21.1, pmDue: "D-18", utilization: 68, status: "정상" },
+      { id: "PKG-FT-02", type: "Package tester", program: "PK-M8-117", socket: "SCK-09C", cycles: 14280, contact: 24.7, pmDue: "D-7", utilization: 72, status: "정상" },
+    ],
+    handoff: [
+      { label: "Containment", value: "STK-03 hold", detail: "영향 4 LOT 격리 · TST-04 우회 투입", tone: "alert" },
+      { label: "Next check", value: "Golden 30 pcs", detail: "야간 첫 LOT에서 Open bin 재현 확인", tone: "warn" },
+      { label: "Exit criteria", value: "10 LOT stable", detail: "FPY 98% 이상 · contact 30 mΩ 이하", tone: "good" },
+    ],
+  },
+  socket: {
+    focus: "Final Test의 false reject를 retest recovery와 socket contact trend로 분리하는 케이스",
+    window: "08.09—08.20 · 28,460 units",
+    sample: "Retest 100% · socket별 3 LOT stratify",
+    stages: [
+      { key: "wafer-sort", label: FLOW_LABELS["wafer-sort"], subtitle: "Wafer map", input: 35800, tested: 35760, fpy: 99.62, retestRecovery: 24, dppm: 4100, testTime: 0.78, uph: 4610, utilization: 74, status: "stable", loss: "−0.08%p", owner: "WS-03", note: "wafer-level fail은 baseline 범위" },
+      { key: "package-test", label: FLOW_LABELS["package-test"], subtitle: "Electrical screen", input: 35760, tested: 35760, fpy: 99.12, retestRecovery: 49, dppm: 8800, testTime: 1.32, uph: 2720, utilization: 70, status: "stable", loss: "−0.50%p", owner: "PKG-FT-04", note: "package continuity는 정상, final test와 분리" },
+      { key: "burn-in", label: FLOW_LABELS["burn-in"], subtitle: "Stress screen", input: 35445, tested: 35445, fpy: 99.36, retestRecovery: 28, dppm: 6400, testTime: 16.8, uph: 214, utilization: 79, status: "stable", loss: "−0.24%p", owner: "BI-02", note: "stress 조건에서 fail 증가 없음" },
+      { key: "final-test", label: FLOW_LABELS["final-test"], subtitle: "DC / AC / Func", input: 35218, tested: 35218, fpy: 97.44, retestRecovery: 76, dppm: 25600, testTime: 1.94, uph: 1860, utilization: 86, status: "hold", loss: "−1.92%p", owner: "TST-07", note: "contact +38 mΩ, retest pass가 높아 testability 의심" },
+      { key: "reliability", label: FLOW_LABELS.reliability, subtitle: "Temp cycle", input: 34318, tested: 960, fpy: 99.79, retestRecovery: 11, dppm: 2100, testTime: 38.0, uph: 75, utilization: 58, status: "stable", loss: "−0.05%p", owner: "REL-01", note: "socket 교체 전후 escape 차이 없음" },
+    ],
+    bins: [
+      { code: "B41", label: "Contact open", family: "TESTABILITY", firstFail: 468, retestPass: 76, share: 51, disposition: "RETEST", note: "socket 교체 시 81% pass" },
+      { code: "B18", label: "DC leakage", family: "DC", firstFail: 174, retestPass: 38, share: 19, disposition: "FA", note: "온도 corner에서도 동일" },
+      { code: "B22", label: "AC timing", family: "AC", firstFail: 124, retestPass: 45, share: 14, disposition: "RETEST", note: "program rev 차이 확인" },
+      { code: "B31", label: "Functional", family: "FUNC", firstFail: 83, retestPass: 22, share: 9, disposition: "FA", note: "fail signature 3종 분리" },
+      { code: "B99", label: "Other", family: "ETC", firstFail: 65, retestPass: 41, share: 7, disposition: "PASS", note: "관리 한계 내" },
+    ],
+    assets: [
+      { id: "TST-07", type: "Final tester", program: "FT-HBM-118", socket: "SCK-07D", cycles: 24680, contact: 68.2, pmDue: "D-1", utilization: 86, status: "점검" },
+      { id: "TST-08", type: "Final tester", program: "FT-HBM-118", socket: "SCK-07E", cycles: 10240, contact: 23.6, pmDue: "D-12", utilization: 74, status: "정상" },
+      { id: "PKG-FT-04", type: "Package tester", program: "PK-HBM-071", socket: "SCK-04A", cycles: 11860, contact: 25.2, pmDue: "D-9", utilization: 70, status: "정상" },
+    ],
+    handoff: [
+      { label: "Containment", value: "SCK-07D 교체", detail: "TST-07 신규 socket 투입 후 3 LOT 확인", tone: "alert" },
+      { label: "Next check", value: "B41 recovery", detail: "retest pass 80% 이상이면 testability 분리", tone: "warn" },
+      { label: "Exit criteria", value: "Contact ≤30 mΩ", detail: "PM sign-off 및 program rev lock", tone: "good" },
+    ],
+  },
+  muf: {
+    focus: "Package delamination의 electrical escape를 Final Test·SAM·material 이력으로 연결하는 케이스",
+    window: "08.01—08.18 · 34,820 units",
+    sample: "SAM 100% screen · material lot별 5 pcs cross-section",
+    stages: [
+      { key: "wafer-sort", label: FLOW_LABELS["wafer-sort"], subtitle: "Wafer map", input: 42600, tested: 42580, fpy: 99.55, retestRecovery: 35, dppm: 5200, testTime: 0.81, uph: 4430, utilization: 76, status: "stable", loss: "−0.11%p", owner: "WS-01", note: "wafer-level defect는 MUF lot과 독립" },
+      { key: "package-test", label: FLOW_LABELS["package-test"], subtitle: "Mold / Cure", input: 42580, tested: 42580, fpy: 98.24, retestRecovery: 28, dppm: 17600, testTime: 1.62, uph: 2220, utilization: 83, status: "hold", loss: "−1.31%p", owner: "MUF-03", note: "MUF-24B floor time과 SAM area 동반 증가" },
+      { key: "burn-in", label: FLOW_LABELS["burn-in"], subtitle: "Stress screen", input: 41831, tested: 41831, fpy: 98.91, retestRecovery: 19, dppm: 10900, testTime: 19.2, uph: 188, utilization: 87, status: "watch", loss: "−0.67%p", owner: "BI-03", note: "latent delam이 thermal stress에서 확대되는지 확인" },
+      { key: "final-test", label: FLOW_LABELS["final-test"], subtitle: "DC / AC / Func", input: 41375, tested: 41375, fpy: 98.63, retestRecovery: 22, dppm: 13700, testTime: 2.06, uph: 1750, utilization: 79, status: "watch", loss: "−0.28%p", owner: "TST-03", note: "전기적 bin과 SAM 면적을 lot 단위로 correlate" },
+      { key: "reliability", label: FLOW_LABELS.reliability, subtitle: "HTOL / temp", input: 40808, tested: 1040, fpy: 99.52, retestRecovery: 9, dppm: 4800, testTime: 44.0, uph: 64, utilization: 61, status: "watch", loss: "−0.31%p", owner: "REL-04", note: "material 조건 복원 후 reliability sample 확대" },
+    ],
+    bins: [
+      { code: "B55", label: "Leakage drift", family: "DC", firstFail: 288, retestPass: 22, share: 34, disposition: "FA", note: "SAM delam area와 양의 상관" },
+      { code: "B63", label: "Open / intermittent", family: "FUNC", firstFail: 212, retestPass: 18, share: 25, disposition: "HOLD", note: "thermal cycle 전후 재현" },
+      { code: "B72", label: "AC timing", family: "AC", firstFail: 156, retestPass: 31, share: 18, disposition: "RETEST", note: "Cure ramp 조건과 split" },
+      { code: "B14", label: "Package crack", family: "PACKAGE", firstFail: 124, retestPass: 8, share: 14, disposition: "FA", note: "cross-section 4/5 확인" },
+      { code: "B99", label: "Other", family: "ETC", firstFail: 73, retestPass: 36, share: 9, disposition: "PASS", note: "기준 sample과 비교" },
+    ],
+    assets: [
+      { id: "TST-03", type: "Final tester", program: "FT-M12-205", socket: "SCK-11B", cycles: 13840, contact: 26.8, pmDue: "D-10", utilization: 79, status: "정상" },
+      { id: "MUF-03", type: "Mold tool", program: "MUF-24B", socket: "VAC-03", cycles: 8240, contact: 0, pmDue: "D-2", utilization: 88, status: "점검" },
+      { id: "SAM-02", type: "SAM inspection", program: "SAM-STACK-09", socket: "N/A", cycles: 6420, contact: 0, pmDue: "D-21", utilization: 64, status: "정상" },
+    ],
+    handoff: [
+      { label: "Containment", value: "MUF-24B hold", detail: "floor time 상단 material 2 lot 출하 보류", tone: "alert" },
+      { label: "Next check", value: "SAM ↔ B55", detail: "전기 bin과 delam area의 lot-level 일치 확인", tone: "warn" },
+      { label: "Exit criteria", value: "8 LOT split", detail: "SAM 0.20% 이하 · cross-section gap 0/5", tone: "good" },
+    ],
+  },
+};
