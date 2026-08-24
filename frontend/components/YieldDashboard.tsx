@@ -222,7 +222,7 @@ export function YieldDashboard() {
         credentials: "include",
         body: JSON.stringify({ scenario: scenarioKey, note: review.trim() }),
       });
-      if (response.status === 401) {
+      if (requiresSignIn(response)) {
         window.location.href = signInHref();
         return;
       }
@@ -250,7 +250,7 @@ export function YieldDashboard() {
         credentials: "include",
         body: JSON.stringify({ scenario: scenarioKey, lot_id: lotId, action, reason, owner: "Test QE" }),
       });
-      if (response.status === 401) {
+      if (requiresSignIn(response)) {
         window.location.href = signInHref();
         return;
       }
@@ -842,6 +842,10 @@ export function YieldDashboard() {
 function DispositionButton({ label, action, lotId, busy, onClick }: { label: string; action: DispositionAction; lotId: string; busy: string | null; onClick: () => void }) {
   const active = busy === `${lotId}:${action}`;
   return <button type="button" onClick={onClick} disabled={Boolean(busy)} aria-label={`${lotId} ${label} 기록`} className={`rounded-md border px-2 py-1 text-[8px] font-medium transition disabled:cursor-wait disabled:opacity-45 ${action === "hold" ? "border-[#f36b78]/18 text-[#ff9aa3] hover:bg-[#f36b78]/10" : action === "release" ? "border-[#31c7a2]/18 text-[#67ddbf] hover:bg-[#31c7a2]/10" : "border-[#f2b84b]/18 text-[#ffd16b] hover:bg-[#f2b84b]/10"}`}>{active ? "…" : label}</button>;
+}
+
+function requiresSignIn(response: Response) {
+  return response.status === 401 || response.headers.get("content-type")?.includes("text/html");
 }
 
 function PlanMeta({ label, value }: { label: string; value: string }) {
