@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-sans-stack);
+}
+
+:root {
+  --font-sans-stack: "Pretendard Variable", Pretendard, "Noto Sans KR",
+    "Apple SD Gothic Neo", Inter, ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*::selection {
+  background: rgba(242, 184, 75, 0.28);
+  color: #fff7e6;
+}
+
+*:focus-visible {
+  outline: 2px solid #f2b84b;
+  outline-offset: 3px;
+}
+
+html {
+  background: #09111f;
+  font-family: var(--font-sans-stack);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 78% 12%, rgba(38, 94, 112, 0.14), transparent 28rem),
+    radial-gradient(circle at 5% 82%, rgba(242, 184, 75, 0.055), transparent 24rem),
+    #09111f;
+  color: #eef4ff;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
