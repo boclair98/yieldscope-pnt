@@ -76,6 +76,14 @@ const dispositionLabel: Record<DispositionAction, string> = {
   fa: "FA",
 };
 
+type ReleaseStatus = "GO" | "CONDITIONAL" | "HOLD";
+
+const releaseStatusStyle: Record<ReleaseStatus, { border: string; background: string; text: string; dot: string }> = {
+  GO: { border: "border-[#31c7a2]/25", background: "bg-[#31c7a2]/10", text: "text-[#6de0c2]", dot: "bg-[#31c7a2]" },
+  CONDITIONAL: { border: "border-[#f2b84b]/25", background: "bg-[#f2b84b]/10", text: "text-[#ffd16b]", dot: "bg-[#f2b84b]" },
+  HOLD: { border: "border-[#f36b78]/25", background: "bg-[#f36b78]/10", text: "text-[#ff9aa3]", dot: "bg-[#f36b78]" },
+};
+
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
   const scenario = SCENARIOS[scenarioKey];
@@ -93,6 +101,7 @@ export function YieldDashboard() {
   const [reviewState, setReviewState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [dispositions, setDispositions] = useState<LotDisposition[]>([]);
   const [dispositionBusy, setDispositionBusy] = useState<string | null>(null);
+  const [handoffAcknowledged, setHandoffAcknowledged] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
   function selectScenario(key: ScenarioKey) {
@@ -106,6 +115,7 @@ export function YieldDashboard() {
     setReview("");
     setReviewState("idle");
     setDispositions([]);
+    setHandoffAcknowledged([]);
   }
 
   useEffect(() => {
@@ -170,6 +180,44 @@ export function YieldDashboard() {
     }
     return latest;
   }, [dispositions]);
+
+  const releaseReadiness = useMemo(() => {
+    const gatePass = controlPlan.gates.filter((gate) => gate.state === "pass").length;
+    const gateWatch = controlPlan.gates.filter((gate) => gate.state === "watch").length;
+    const gatePending = controlPlan.gates.filter((gate) => gate.state === "pending");
+    const holdStages = operations.stages.filter((stage) => stage.status === "hold");
+    const attentionAssets = operations.assets.filter((asset) => asset.status !== "정상");
+    const blockingAssets = operations.assets.filter((asset) => asset.status === "점검");
+    const score = Math.max(
+      0,
+      Math.round(((gatePass + gateWatch * 0.55) / controlPlan.gates.length) * 100 - holdStages.length * 12 - blockingAssets.length * 10),
+    );
+    const status: ReleaseStatus = gatePending.length > 0 || holdStages.length > 0 || blockingAssets.length > 0
+      ? "HOLD"
+      : gateWatch > 0 || attentionAssets.length > 0
+        ? "CONDITIONAL"
+        : "GO";
+    const checks = [
+      ...controlPlan.gates.map((gate) => ({ label: gate.label, value: gate.value, state: gate.state })),
+      { label: "Flow health", value: holdStages.length > 0 ? `${holdStages[0].label} stage hold` : "No stage hold", state: holdStages.length > 0 ? "pending" as const : "pass" as const },
+      { label: "Tester / socket", value: blockingAssets.length > 0 ? `${blockingAssets[0].id} 점검 필요` : attentionAssets.length > 0 ? `${attentionAssets.length}개 자산 주의` : "All assets normal", state: blockingAssets.length > 0 ? "pending" as const : attentionAssets.length > 0 ? "watch" as const : "pass" as const },
+    ];
+    const nextAction = gatePending[0]
+      ? `${gatePending[0].label} 확인 후 Test QE 승인`
+      : holdStages[0]
+        ? `${holdStages[0].label}의 HOLD 원인 재현 및 교차 확인`
+        : attentionAssets[0]
+          ? `${attentionAssets[0].id} PM / 상태 확인 후 correlation 재검`
+          : "다음 LOT의 golden sample과 TAT를 함께 확인";
+    return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
+  }, [controlPlan, operations]);
+
+  const handoffDone = operations.handoff.filter((item) => handoffAcknowledged.includes(`${scenarioKey}:${item.label}`)).length;
+
+  function toggleHandoff(label: string) {
+    const key = `${scenarioKey}:${label}`;
+    setHandoffAcknowledged((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  }
 
   function scrollTo(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -433,6 +481,40 @@ export function YieldDashboard() {
               ))}
             </div>
 
+            <Panel className="mt-4 overflow-hidden">
+              <div className="grid gap-5 p-5 sm:p-6 2xl:grid-cols-[minmax(0,1.35fr)_290px]">
+                <div>
+                  <PanelHeading
+                    eyebrow="P&T RELEASE READINESS"
+                    title="양산 투입 판단을 근거와 함께 잠급니다"
+                    description="수율만 보는 대신 Databook·Golden sample·Tester correlation·Flow health를 동시에 확인합니다."
+                    action={<span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[9px] font-semibold ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background} ${releaseStatusStyle[releaseReadiness.status].text}`}><span className={`size-1.5 rounded-full ${releaseStatusStyle[releaseReadiness.status].dot}`} /> {releaseReadiness.score}% readiness</span>}
+                  />
+                  <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                    <DataPoint label="PASS GATES" value={`${releaseReadiness.gatePass} / ${controlPlan.gates.length}`} good={releaseReadiness.gatePending === 0} />
+                    <DataPoint label="WATCH GATES" value={`${releaseReadiness.gateWatch}`} accent={releaseReadiness.gateWatch > 0} />
+                    <DataPoint label="FLOW HOLD" value={`${releaseReadiness.holdStages}`} accent={releaseReadiness.holdStages > 0} />
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {releaseReadiness.checks.map((check) => (
+                      <div key={check.label} className={`rounded-xl border p-3 ${check.state === "pass" ? "border-[#31c7a2]/15 bg-[#31c7a2]/[0.035]" : check.state === "watch" ? "border-[#f2b84b]/15 bg-[#f2b84b]/[0.035]" : "border-[#f36b78]/15 bg-[#f36b78]/[0.035]"}`}>
+                        <div className="flex items-center justify-between gap-2"><span className="text-[8px] text-[#718097]">{check.label}</span><span className={`size-1.5 rounded-full ${check.state === "pass" ? "bg-[#31c7a2]" : check.state === "watch" ? "bg-[#f2b84b]" : "bg-[#f36b78]"}`} /></div>
+                        <p className="mt-2 truncate text-[10px] font-medium text-[#d7e1ec]" title={check.value}>{check.value}</p>
+                        <p className={`mt-1 text-[8px] uppercase tracking-[0.1em] ${check.state === "pass" ? "text-[#68ddbf]" : check.state === "watch" ? "text-[#ffd16b]" : "text-[#ff9aa3]"}`}>{check.state}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className={`flex flex-col justify-between rounded-2xl border p-5 ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background}`}>
+                  <div>
+                    <div className="flex items-center gap-2"><span className={`grid size-9 place-items-center rounded-xl ${releaseStatusStyle[releaseReadiness.status].background} ${releaseStatusStyle[releaseReadiness.status].text}`}>{releaseReadiness.status === "GO" ? <CheckCircle2 className="size-5" /> : releaseReadiness.status === "HOLD" ? <AlertTriangle className="size-5" /> : <ShieldCheck className="size-5" />}</span><div><p className="text-[8px] font-semibold tracking-[0.14em] text-[#79889c]">CURRENT DECISION</p><p className={`mt-1 text-lg font-semibold tracking-[-0.03em] ${releaseStatusStyle[releaseReadiness.status].text}`}>{releaseReadiness.status}</p></div></div>
+                    <p className="mt-4 text-[10px] leading-5 text-[#9aa8ba]">{releaseReadiness.status === "GO" ? "필수 gate와 flow 상태가 양산 투입 기준을 충족합니다." : releaseReadiness.status === "HOLD" ? "미완료 gate 또는 stage·장비 blocker가 있어 출하·투입 판단을 보류합니다." : "투입은 가능하지만 watch 항목을 다음 교대 확인 조건으로 남겨야 합니다."}</p>
+                  </div>
+                  <div className="mt-5 rounded-xl border border-white/[0.07] bg-[#08101d]/35 p-3.5"><p className="text-[8px] font-semibold tracking-[0.12em] text-[#748399]">NEXT REQUIRED CHECK</p><p className="mt-2 text-[10px] leading-5 text-[#d3deea]">{releaseReadiness.nextAction}</p><button type="button" onClick={() => scrollTo("test-ops")} className="mt-3 flex items-center gap-1.5 text-[9px] font-medium text-[#f2b84b] hover:text-[#ffd16b]">Gate 상세 보기 <ArrowRight className="size-3" /></button></div>
+                </div>
+              </div>
+            </Panel>
+
             <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1.62fr)_minmax(330px,0.8fr)]">
               <Panel className="p-5 sm:p-6">
                 <PanelHeading
@@ -575,11 +657,11 @@ export function YieldDashboard() {
               </Panel>
 
               <Panel className="p-5 sm:p-6">
-                <PanelHeading eyebrow="SHIFT HANDOFF" title="다음 교대가 바로 실행할 항목" description="현상 설명보다 containment·확인 조건·종료 기준을 남깁니다." />
+                <PanelHeading eyebrow="SHIFT HANDOFF" title="다음 교대가 바로 실행할 항목" description="현상 설명보다 containment·확인 조건·종료 기준을 남깁니다." action={<span className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[9px] tabular-nums text-[#8492a6]">{handoffDone}/{operations.handoff.length} acknowledged</span>} />
                 <div className="mt-5 space-y-3">
                   {operations.handoff.map((item) => (
                     <div key={item.label} className={`rounded-xl border p-3.5 ${item.tone === "alert" ? "border-[#f36b78]/18 bg-[#f36b78]/[0.045]" : item.tone === "warn" ? "border-[#f2b84b]/18 bg-[#f2b84b]/[0.045]" : "border-[#31c7a2]/18 bg-[#31c7a2]/[0.045]"}`}>
-                      <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold tracking-[0.12em] text-[#78879c]">{item.label}</span><span className={`size-1.5 rounded-full ${item.tone === "alert" ? "bg-[#f36b78]" : item.tone === "warn" ? "bg-[#f2b84b]" : "bg-[#31c7a2]"}`} /></div>
+                      <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold tracking-[0.12em] text-[#78879c]">{item.label}</span><button type="button" onClick={() => toggleHandoff(item.label)} aria-pressed={handoffAcknowledged.includes(`${scenarioKey}:${item.label}`)} className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[8px] transition ${handoffAcknowledged.includes(`${scenarioKey}:${item.label}`) ? "border-[#31c7a2]/20 bg-[#31c7a2]/10 text-[#69dfc2]" : "border-white/[0.08] bg-white/[0.025] text-[#7b8a9e] hover:border-white/[0.16] hover:text-[#cbd6e3]"}`}>{handoffAcknowledged.includes(`${scenarioKey}:${item.label}`) ? <Check className="size-2.5" /> : <CircleDot className="size-2.5" />} {handoffAcknowledged.includes(`${scenarioKey}:${item.label}`) ? "확인됨" : "교대 확인"}</button></div>
                       <p className="mt-2 text-[12px] font-semibold text-[#dce5ef]">{item.value}</p><p className="mt-1 text-[9px] leading-5 text-[#728197]">{item.detail}</p>
                     </div>
                   ))}

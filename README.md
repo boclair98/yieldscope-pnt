@@ -61,12 +61,13 @@ YieldScope P&T는 이 질문을 하나의 운영 흐름으로 남기기 위해 �
 | 업데이트 | 적용 내용 |
 | --- | --- |
 | Test release control | Databook / Margin Test, Golden sample, Tester correlation, Release approval gate를 한 화면에서 확인 |
+| Release readiness score | Gate·stage hold·tester/socket health를 묶어 `GO / CONDITIONAL / HOLD`와 다음 조치를 자동 제안 |
 | 실제형 Test flow | `EPM → Wafer Burn-in → Wafer Test / Repair → Package Test → Module Test` 단계와 Package·Final·Reliability 지표 연결 |
 | 생산성 지표 | FPY, DPPM, Retest recovery, Test time, UPH, Tester utilization, TAT target을 함께 비교 |
 | Bin / Retest triage | DC·AC·Function·Contact·Package 계열 Bin을 First fail과 Retest pass로 분리 |
 | Tester·Socket health | Program revision, Socket cycle, Contact resistance, PM due, utilization을 동시에 확인 |
 | LOT disposition | Watchlist에서 `HOLD / RELEASE / FA` 결정을 기록하고 사유·담당자·시각을 감사 로그로 저장 |
-| Shift handoff | Containment, Next check, Exit criteria를 다음 교대가 바로 실행할 수 있는 형태로 제공 |
+| Shift handoff | Containment, Next check, Exit criteria를 다음 교대가 바로 실행하고 항목별 확인 상태를 남길 수 있도록 제공 |
 | RCA Workbench | Stratify → Reproduce → Corroborate 순서로 testability와 package/die 원인을 분리 |
 | CAPA validation | 개선 전·후 불량률, LOT 수, 감소율과 Containment / Corrective / Preventive action 추적 |
 | 인증 경계 | 읽기는 공개, 결정 기록과 엔지니어 노트는 coders.kr 로그인 사용자만 기록 |
@@ -74,6 +75,7 @@ YieldScope P&T는 이 질문을 하나의 운영 흐름으로 남기기 위해 �
 
 > [!NOTE]
 > LOT 결정은 화면에서 바로 저장되지만, 실제 도입 시에는 사내 권한·전자서명·변경 승인·MES/TMS/FA 인터페이스를 조직 기준에 맞춰 추가해야 합니다.
+> Release readiness 점수와 교대 확인 상태는 현재 합성 데모의 의사결정 보조 기능이며, 실제 출하 승인을 대체하지 않습니다.
 
 ### 서비스 바로가기
 
