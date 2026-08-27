@@ -47,6 +47,7 @@ import {
   TEST_OPERATIONS,
   type DispositionAction,
   type LotDisposition,
+  type Scenario,
   type TestFlowStageKey,
   type ScenarioKey,
 } from "@/lib/quality";
@@ -246,16 +247,99 @@ function parseScenarioSettingsMap(value: unknown): ScenarioSettingsMap | null {
   return next;
 }
 
+type LotRecord = Scenario["lots"][number];
+type CustomLotsMap = Record<ScenarioKey, LotRecord[] | null>;
+
+const LOTS_STORAGE_KEY = "yieldscope:pnt-custom-lots:v1";
+
+function splitCsvLine(line: string) {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"' && quoted) {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseLotsCsv(csv: string): LotRecord[] | null {
+  const lines = csv.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const headers = splitCsvLine(lines[0]).map((header) => header.toLowerCase());
+  const required = ["lot_id", "product", "tool", "units", "yield_pct", "top_defect", "shift", "status"];
+  if (!required.every((field) => headers.includes(field))) return null;
+  const indexOf = (field: string) => headers.indexOf(field);
+  const allowedStatuses = new Set<LotRecord["status"]>(["격리", "확인 중", "모니터링", "해제"]);
+  const rows: LotRecord[] = [];
+  for (const line of lines.slice(1)) {
+    const cells = splitCsvLine(line);
+    const units = Number(cells[indexOf("units")]);
+    const yieldValue = Number(cells[indexOf("yield_pct")]);
+    const status = cells[indexOf("status")] as LotRecord["status"];
+    const row: LotRecord = {
+      id: cells[indexOf("lot_id")] ?? "",
+      product: cells[indexOf("product")] ?? "",
+      tool: cells[indexOf("tool")] ?? "",
+      units,
+      yield: yieldValue,
+      defect: cells[indexOf("top_defect")] ?? "",
+      shift: cells[indexOf("shift")] ?? "",
+      status,
+    };
+    if (!row.id || !row.product || !row.tool || !row.defect || !row.shift || !Number.isFinite(units) || units <= 0 || !Number.isFinite(yieldValue) || yieldValue < 0 || yieldValue > 100 || !allowedStatuses.has(status)) return null;
+    rows.push(row);
+  }
+  return rows.length ? rows : null;
+}
+
+function parseCustomLotsMap(value: unknown): CustomLotsMap | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const next = {} as CustomLotsMap;
+  for (const key of SCENARIO_ORDER) {
+    const rows = source[key];
+    if (rows === null) {
+      next[key] = null;
+      continue;
+    }
+    if (!Array.isArray(rows)) return null;
+    const parsed = rows.map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const item = row as Record<string, unknown>;
+      const status = item.status;
+      if (typeof item.id !== "string" || typeof item.product !== "string" || typeof item.tool !== "string" || typeof item.units !== "number" || typeof item.yield !== "number" || typeof item.defect !== "string" || typeof item.shift !== "string" || (status !== "격리" && status !== "확인 중" && status !== "모니터링" && status !== "해제")) return null;
+      return { id: item.id, product: item.product, tool: item.tool, units: item.units, yield: item.yield, defect: item.defect, shift: item.shift, status } as LotRecord;
+    });
+    if (parsed.some((row) => row === null)) return null;
+    next[key] = parsed as LotRecord[];
+  }
+  return next;
+}
+
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
   const [roleLens, setRoleLens] = useState<RoleLens>("test");
   const [scenarioSettings, setScenarioSettings] = useState<ScenarioSettingsMap>(DEFAULT_SCENARIO_SETTINGS);
+  const [customLots, setCustomLots] = useState<CustomLotsMap>({ stacker: null, socket: null, muf: null });
   const [draftSettings, setDraftSettings] = useState<ScenarioSettings>(DEFAULT_SCENARIO_SETTINGS.stacker);
   const [dataStudioOpen, setDataStudioOpen] = useState(false);
   const scenario = SCENARIOS[scenarioKey];
   const operations = TEST_OPERATIONS[scenarioKey];
   const controlPlan = TEST_CONTROL_PLANS[scenarioKey];
   const activeSettings = scenarioSettings[scenarioKey];
+  const activeLots = customLots[scenarioKey] ?? scenario.lots;
   const [selectedTrend, setSelectedTrend] = useState(scenario.trend.length - 1);
   const [selectedDefect, setSelectedDefect] = useState(scenario.pareto[0].code);
   const [activeFlowStage, setActiveFlowStage] = useState<TestFlowStageKey>("final-test");
@@ -271,6 +355,7 @@ export function YieldDashboard() {
   const [handoffAcknowledged, setHandoffAcknowledged] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const settingsFileRef = useRef<HTMLInputElement>(null);
+  const lotsFileRef = useRef<HTMLInputElement>(null);
 
   function selectScenario(key: ScenarioKey) {
     const nextScenario = SCENARIOS[key];
@@ -292,6 +377,11 @@ export function YieldDashboard() {
     window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
   }
 
+  function persistCustomLots(next: CustomLotsMap) {
+    setCustomLots(next);
+    window.localStorage.setItem(LOTS_STORAGE_KEY, JSON.stringify(next));
+  }
+
   function saveScenarioSettings(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalized = normalizeScenarioSettings(draftSettings);
@@ -304,9 +394,11 @@ export function YieldDashboard() {
 
   function resetCurrentScenarioSettings() {
     const next = { ...scenarioSettings, [scenarioKey]: DEFAULT_SCENARIO_SETTINGS[scenarioKey] };
+    const nextLots = { ...customLots, [scenarioKey]: null };
     persistScenarioSettings(next);
+    persistCustomLots(nextLots);
     setDraftSettings(next[scenarioKey]);
-    setNotice("현재 Case를 기본 설정으로 복원했습니다.");
+    setNotice("현재 Case의 설정과 LOT 데이터를 기본값으로 복원했습니다.");
   }
 
   function exportScenarioSettings() {
@@ -332,10 +424,28 @@ export function YieldDashboard() {
     }
   }
 
+  async function importLots(file: File) {
+    try {
+      const parsed = parseLotsCsv(await file.text());
+      if (!parsed) throw new Error("invalid lots");
+      persistCustomLots({ ...customLots, [scenarioKey]: parsed });
+      setSelectedLots([]);
+      setNotice(`${parsed.length}개 LOT를 ${activeSettings.caseLabel}에 반영했습니다.`);
+    } catch {
+      setNotice("LOT CSV를 읽지 못했습니다. 필수 컬럼(lot_id, product, tool, units, yield_pct, top_defect, shift, status)을 확인해 주세요.");
+    }
+  }
+
   function handleSettingsFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) void importScenarioSettings(file);
+  }
+
+  function handleLotsFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void importLots(file);
   }
 
   useEffect(() => {
@@ -370,6 +480,16 @@ export function YieldDashboard() {
   }, [scenarioKey]);
 
   useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(LOTS_STORAGE_KEY);
+      const parsed = stored ? parseCustomLotsMap(JSON.parse(stored)) : null;
+      if (parsed) window.setTimeout(() => setCustomLots(parsed), 0);
+    } catch {
+      // A malformed local LOT file must not block the dashboard.
+    }
+  }, []);
+
+  useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(null), 2800);
     return () => window.clearTimeout(timer);
@@ -393,14 +513,14 @@ export function YieldDashboard() {
 
   const filteredLots = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return scenario.lots;
-    return scenario.lots.filter((lot) =>
+    if (!needle) return activeLots;
+    return activeLots.filter((lot) =>
       [lot.id, lot.product, lot.tool, lot.defect, lot.status]
         .join(" ")
         .toLowerCase()
         .includes(needle),
     );
-  }, [query, scenario.lots]);
+  }, [activeLots, query]);
 
   const configuredTrend = useMemo(
     () => scenario.trend.map((point, index) => index === scenario.trend.length - 1 ? { ...point, yield: activeSettings.latestYield } : point),
@@ -1341,6 +1461,15 @@ export function YieldDashboard() {
                     <button type="button" onClick={exportScenarioSettings} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[9px] font-medium text-[#aab8c9] transition hover:border-white/[0.18] hover:text-white"><Download className="size-3" /> JSON 내보내기</button>
                     <button type="button" onClick={() => settingsFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[9px] font-medium text-[#aab8c9] transition hover:border-white/[0.18] hover:text-white"><Upload className="size-3" /> JSON 불러오기</button>
                     <input ref={settingsFileRef} type="file" accept="application/json,.json" onChange={handleSettingsFileChange} className="hidden" />
+                  </div>
+                  <div className="mt-4 border-t border-white/[0.06] pt-3">
+                    <p className="text-[9px] font-medium text-[#c5d1df]">LOT Watchlist 데이터</p>
+                    <p className="mt-1 text-[9px] leading-5 text-[#718097]">CSV를 불러오면 현재 Case의 LOT 목록을 교체합니다. 기존 화면의 CSV 내보내기 결과를 그대로 다시 사용할 수 있습니다.</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => lotsFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-[#f2b84b]/18 bg-[#f2b84b]/[0.05] px-3 py-2 text-[9px] font-medium text-[#ffd16b] transition hover:border-[#f2b84b]/35 hover:bg-[#f2b84b]/[0.1]"><Upload className="size-3" /> LOT CSV 불러오기</button>
+                      <span className="text-[8px] text-[#637289]">현재 {activeLots.length}개 LOT · {customLots[scenarioKey] ? "사용자 데이터" : "기본 데이터"}</span>
+                      <input ref={lotsFileRef} type="file" accept="text/csv,.csv" onChange={handleLotsFileChange} className="hidden" />
+                    </div>
                   </div>
                 </div>
               </div>

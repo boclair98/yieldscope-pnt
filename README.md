@@ -105,6 +105,7 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 - Case 이름·품질 신호·신호 상세(집중 LOT·장비·교대 조건)
 - Yield 목표·Final Test DPPM 한계·Retest 목표
 - 최신 Yield·Final Test FPY/DPPM·Retest recovery·Top defect 비중
+- LOT Watchlist CSV 교체 업로드(기존 CSV 내보내기 포맷 재사용)
 - 브라우저 저장(localStorage), 현재 Case 기본값 복원, 전체 Case 설정 JSON 내보내기/불러오기
 
 저장한 설정은 차트·KPI·Release readiness·Decision Brief에 즉시 반영됩니다. 공개 데모의 입력 편의를 위한 기능이며, 사내 운영에서는 MES/TMS/Tester/Databook adapter와 승인 권한을 함께 연결하는 것을 전제로 합니다.
