@@ -108,6 +108,8 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 - LOT Watchlist CSV 교체 업로드(기존 CSV 내보내기 포맷 재사용)
 - 브라우저 저장(localStorage), 현재 Case 기본값 복원, 전체 Case 설정 JSON 내보내기/불러오기
 
+LOT CSV는 다음 헤더를 사용합니다: `lot_id, product, tool, units, yield_pct, top_defect, shift, status`. `status`는 `격리`, `확인 중`, `모니터링`, `해제` 중 하나여야 합니다.
+
 저장한 설정은 차트·KPI·Release readiness·Decision Brief에 즉시 반영됩니다. 공개 데모의 입력 편의를 위한 기능이며, 사내 운영에서는 MES/TMS/Tester/Databook adapter와 승인 권한을 함께 연결하는 것을 전제로 합니다.
 
 ### 1. Test Release Control
