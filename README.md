@@ -50,7 +50,7 @@ SK hynix P&T Test 직무의 핵심 목표인 `수율·품질·생산성`을 한 
 | 도메인 | 반도체 Package & Test / 양산기술(P&T) |
 | 핵심 사용자 | P&T Test Engineer, 제조·양산기술, Package/Process, FA·Quality, Test QE |
 | 대표 시나리오 | Stacker 정렬 편차, Socket false reject, MUF delamination |
-| 핵심 결과물 | Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
+| 핵심 결과물 | Role lens 기반 Decision Brief, Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
 | 서비스 | [yieldscope-pnt.coders.kr](https://yieldscope-pnt.coders.kr) |
 | 저장소 | [github.com/boclair98/yieldscope-pnt](https://github.com/boclair98/yieldscope-pnt) |
 
@@ -93,6 +93,10 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 ## 주요 기능
 
+### 0. P&T Decision Brief
+
+화면 상단에서 `P&T Test / Quality·QE / Manufacturing` 관점을 전환하면 같은 Case를 역할별 의사결정 순서로 재정렬합니다. `현재 신호 → 지금 결정 → 다음 담당자`를 한 줄로 읽고, 해당 업무 화면으로 바로 이동할 수 있어 교대 리뷰와 면접 데모에서 핵심 판단을 빠르게 설명할 수 있습니다.
+
 ### 1. Test Release Control
 
 양산 투입 전 Test Plan을 고정하고 `Databook / Margin → Golden sample → Tester correlation → Release approval` 순으로 gate를 확인합니다.
@@ -125,6 +129,7 @@ Containment, Corrective, Preventive action의 전후 효과를 비교하고, 다
 
 ## 프로젝트 중점사항
 
+- **역할별로 같은 데이터를 다르게 읽기**: Test는 testability·retest, QE는 gate·disposition·evidence, Manufacturing은 FPY·UPH·TAT·handoff를 먼저 보도록 Decision Brief를 제공합니다.
 - **수율만으로 결론 내리지 않기**: FPY·DPPM과 함께 Test time, UPH, utilization, TAT를 확인합니다.
 - **First fail과 실제 불량 분리하기**: retest recovery와 alternate tester/socket 재현을 함께 봅니다.
 - **상관과 인과 구분하기**: Risk ratio는 우선순위를 정하는 지표일 뿐 원인 확정값으로 표시하지 않습니다.
@@ -183,7 +188,7 @@ users
 
 | 화면 | 확인할 수 있는 내용 |
 | --- | --- |
-| [Overview](https://yieldscope-pnt.coders.kr#overview) | Case 신호, Final yield, Release readiness |
+| [Overview](https://yieldscope-pnt.coders.kr#overview) | 역할별 Decision Brief, Case 신호, Final yield, Release readiness |
 | [Test Operations](https://yieldscope-pnt.coders.kr#test-ops) | Test Plan, stage별 FPY·DPPM·UPH·TAT, Bin, tester health |
 | [Defect Explorer](https://yieldscope-pnt.coders.kr#defects) | Pareto, risk ratio, LOT Watchlist, CSV export |
 | [RCA Workbench](https://yieldscope-pnt.coders.kr#rca) | 가설 신뢰도와 전기적·물리적 증거 체인 |

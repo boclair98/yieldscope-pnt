@@ -84,8 +84,45 @@ const releaseStatusStyle: Record<ReleaseStatus, { border: string; background: st
   HOLD: { border: "border-[#f36b78]/25", background: "bg-[#f36b78]/10", text: "text-[#ff9aa3]", dot: "bg-[#f36b78]" },
 };
 
+type RoleLens = "test" | "quality" | "manufacturing";
+
+const ROLE_LENSES: Record<RoleLens, {
+  label: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  focus: string;
+  section: string;
+}> = {
+  test: {
+    label: "P&T Test",
+    eyebrow: "TEST ENGINEERING LENS",
+    title: "불량을 빠르게 재현하고 양산 기준을 잠급니다.",
+    description: "Bin·retest·tester correlation을 먼저 확인해 testability와 제품 기인 불량을 분리합니다.",
+    focus: "Bin / Retest · Tester health · Program revision",
+    section: "test-ops",
+  },
+  quality: {
+    label: "Quality / QE",
+    eyebrow: "QUALITY ENGINEERING LENS",
+    title: "출하 판단에 필요한 증거와 책임을 한 줄로 연결합니다.",
+    description: "Release gate, LOT disposition, FA evidence를 묶어 HOLD·RELEASE·FA의 근거를 남깁니다.",
+    focus: "Release gate · LOT disposition · RCA evidence",
+    section: "defects",
+  },
+  manufacturing: {
+    label: "Manufacturing",
+    eyebrow: "MANUFACTURING LENS",
+    title: "수율·Capacity·교대 실행을 동시에 안정화합니다.",
+    description: "FPY만 올리는 조치가 아니라 UPH·utilization·TAT와 다음 교대의 exit criteria까지 확인합니다.",
+    focus: "FPY · UPH · Utilization · Shift handoff",
+    section: "test-ops",
+  },
+};
+
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
+  const [roleLens, setRoleLens] = useState<RoleLens>("test");
   const scenario = SCENARIOS[scenarioKey];
   const operations = TEST_OPERATIONS[scenarioKey];
   const controlPlan = TEST_CONTROL_PLANS[scenarioKey];
@@ -211,6 +248,36 @@ export function YieldDashboard() {
           : "다음 LOT의 golden sample과 TAT를 함께 확인";
     return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
   }, [controlPlan, operations]);
+
+  const lens = ROLE_LENSES[roleLens];
+  const decisionBrief = useMemo(() => {
+    const signal = roleLens === "test"
+      ? `${activeStage.label} · ${activeStage.dppm.toLocaleString()} DPPM · retest ${activeStage.retestRecovery}%`
+      : roleLens === "quality"
+        ? `${releaseReadiness.gatePass}/${controlPlan.gates.length} gate pass · ${scenario.pareto[0].share}% top defect share`
+        : `${activeStage.fpy.toFixed(2)}% FPY · ${activeStage.uph.toLocaleString()} UPH · ${activeStage.utilization}% util.`;
+    const signalDetail = roleLens === "test"
+      ? `Testability 신호를 먼저 분리합니다. ${activeStage.note}`
+      : roleLens === "quality"
+        ? `현재 우선 불량은 ${scenario.pareto[0].label}입니다. ${scenario.signalDetail}`
+        : `현재 병목은 ${activeStage.label}입니다. ${operations.focus}`;
+    const decision = roleLens === "test"
+      ? `${activeStage.retestRecovery >= 60 ? "Testability 우선" : "제품 기인 우선"} · ${releaseReadiness.status}`
+      : roleLens === "quality"
+        ? `${releaseReadiness.status} · ${releaseReadiness.score}% readiness`
+        : `${activeStage.status === "hold" ? "Stage hold" : activeStage.status === "watch" ? "Watch" : "Stable"} · ${activeStage.loss}`;
+    const decisionDetail = roleLens === "test"
+      ? `alternate tester/socket 교차 확인 후 ${releaseReadiness.nextAction}`
+      : roleLens === "quality"
+        ? releaseReadiness.nextAction
+        : `다음 교대는 ${operations.handoff[1]?.value ?? "exit criteria"}를 확인하고 ${operations.handoff[2]?.value ?? "안정화 조건"}를 닫습니다.`;
+    const owner = roleLens === "test"
+      ? `${activeStage.owner} · Test Engineering`
+      : roleLens === "quality"
+        ? "Test QE · Quality / FA"
+        : `${activeStage.owner} · Manufacturing / PE`;
+    return { signal, signalDetail, decision, decisionDetail, owner };
+  }, [activeStage, controlPlan.gates.length, operations, releaseReadiness, roleLens, scenario.pareto, scenario.signalDetail]);
 
   const handoffDone = operations.handoff.filter((item) => handoffAcknowledged.includes(`${scenarioKey}:${item.label}`)).length;
 
@@ -511,6 +578,60 @@ export function YieldDashboard() {
                     <p className="mt-4 text-[10px] leading-5 text-[#9aa8ba]">{releaseReadiness.status === "GO" ? "필수 gate와 flow 상태가 양산 투입 기준을 충족합니다." : releaseReadiness.status === "HOLD" ? "미완료 gate 또는 stage·장비 blocker가 있어 출하·투입 판단을 보류합니다." : "투입은 가능하지만 watch 항목을 다음 교대 확인 조건으로 남겨야 합니다."}</p>
                   </div>
                   <div className="mt-5 rounded-xl border border-white/[0.07] bg-[#08101d]/35 p-3.5"><p className="text-[8px] font-semibold tracking-[0.12em] text-[#748399]">NEXT REQUIRED CHECK</p><p className="mt-2 text-[10px] leading-5 text-[#d3deea]">{releaseReadiness.nextAction}</p><button type="button" onClick={() => scrollTo("test-ops")} className="mt-3 flex items-center gap-1.5 text-[9px] font-medium text-[#f2b84b] hover:text-[#ffd16b]">Gate 상세 보기 <ArrowRight className="size-3" /></button></div>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel className="mt-4 overflow-hidden border-[#55b8f6]/15 bg-[linear-gradient(115deg,rgba(85,184,246,0.075),rgba(17,27,43,0.82)_48%,rgba(49,199,162,0.045))]">
+              <div className="p-5 sm:p-6">
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-2xl">
+                    <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.16em] text-[#8fcbe9]">
+                      <Target className="size-3.5" /> {lens.eyebrow}
+                    </div>
+                    <h2 className="mt-3 text-[20px] font-semibold leading-7 tracking-[-0.035em] text-[#eef4fb] sm:text-[22px]">{lens.title}</h2>
+                    <p className="mt-2 text-[11px] leading-5 text-[#8c9bad]">{lens.description}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.07] bg-[#08101d]/45 p-1" role="tablist" aria-label="업무 관점 선택">
+                    {(Object.keys(ROLE_LENSES) as RoleLens[]).map((key) => {
+                      const active = key === roleLens;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setRoleLens(key)}
+                          className={`rounded-lg px-3 py-2 text-[10px] font-medium transition ${active ? "bg-[#f2b84b] text-[#181208] shadow-[0_5px_18px_rgba(242,184,75,0.18)]" : "text-[#8291a6] hover:bg-white/[0.05] hover:text-[#d6e0eb]"}`}
+                        >
+                          {ROLE_LENSES[key].label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-xl border border-white/[0.065] bg-[#08101d]/38 p-4">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[8px] font-semibold tracking-[0.13em] text-[#6e7e94]">CURRENT SIGNAL</span><span className="size-1.5 rounded-full bg-[#f2b84b]" /></div>
+                    <p className="mt-3 text-[13px] font-semibold tracking-[-0.02em] text-[#e3ebf5]">{decisionBrief.signal}</p>
+                    <p className="mt-1.5 text-[9px] leading-5 text-[#7e8da2]">{decisionBrief.signalDetail}</p>
+                  </div>
+                  <div className={`rounded-xl border p-4 ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background}`}>
+                    <div className="flex items-center justify-between gap-2"><span className="text-[8px] font-semibold tracking-[0.13em] text-[#6e7e94]">DECISION NOW</span><span className={`size-1.5 rounded-full ${releaseStatusStyle[releaseReadiness.status].dot}`} /></div>
+                    <p className={`mt-3 text-[13px] font-semibold tracking-[-0.02em] ${releaseStatusStyle[releaseReadiness.status].text}`}>{decisionBrief.decision}</p>
+                    <p className="mt-1.5 text-[9px] leading-5 text-[#8b9aac]">{decisionBrief.decisionDetail}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.065] bg-[#08101d]/38 p-4">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[8px] font-semibold tracking-[0.13em] text-[#6e7e94]">NEXT OWNER</span><span className="size-1.5 rounded-full bg-[#31c7a2]" /></div>
+                    <p className="mt-3 text-[13px] font-semibold tracking-[-0.02em] text-[#e3ebf5]">{decisionBrief.owner}</p>
+                    <p className="mt-1.5 text-[9px] leading-5 text-[#7e8da2]">Focus · {lens.focus}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#55b8f6]/12 bg-[#55b8f6]/[0.035] p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-[9px] leading-5 text-[#8294aa]"><span className="font-medium text-[#a9d8f1]">P&amp;T decision brief</span> · 현재 Case의 합성 신호를 역할별 우선순위로 재정렬한 화면입니다. 최종 출하 승인은 실제 품질 승인선에서 수행합니다.</p>
+                  <button type="button" onClick={() => scrollTo(lens.section)} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.07] px-3 py-2 text-[9px] font-medium text-[#b8e0f6] transition hover:border-[#55b8f6]/35 hover:bg-[#55b8f6]/[0.12]">{lens.label} 화면 열기 <ArrowRight className="size-3" /></button>
                 </div>
               </div>
             </Panel>
