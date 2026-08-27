@@ -26,10 +26,12 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Settings2,
   Target,
   TestTube2,
   Timer,
   TrendingDown,
+  Upload,
   Wrench,
   X,
   Zap,
@@ -120,12 +122,140 @@ const ROLE_LENSES: Record<RoleLens, {
   },
 };
 
+type ScenarioSettings = {
+  caseLabel: string;
+  product: string;
+  stage: "PACKAGE" | "TEST";
+  programRev: string;
+  tatTarget: string;
+  window: string;
+  signal: string;
+  signalDetail: string;
+  targetYield: number;
+  dppmLimit: number;
+  retestTarget: number;
+  latestYield: number;
+  activeFpy: number;
+  activeDppm: number;
+  activeRetestRecovery: number;
+  topDefectShare: number;
+};
+
+type ScenarioSettingsMap = Record<ScenarioKey, ScenarioSettings>;
+
+const SETTINGS_STORAGE_KEY = "yieldscope:pnt-scenario-settings:v1";
+
+const DEFAULT_SCENARIO_SETTINGS: ScenarioSettingsMap = {
+  stacker: {
+    caseLabel: "Stacker 정렬 편차",
+    product: "Stacked-M8",
+    stage: "PACKAGE",
+    programRev: "FT-M8-042",
+    tatTarget: "≤ 18 h",
+    window: "2026.08.05—08.18",
+    signal: "Stack 공정 이후 Open / High-R 불량이 기준 대비 3.6배 높습니다.",
+    signalDetail: "STK-03과 야간 Shift의 4개 LOT에 손실의 71%가 집중되었습니다.",
+    targetYield: 97,
+    dppmLimit: 15000,
+    retestTarget: 60,
+    latestYield: 97.34,
+    activeFpy: 98.07,
+    activeDppm: 19300,
+    activeRetestRecovery: 63,
+    topDefectShare: 47,
+  },
+  socket: {
+    caseLabel: "Socket False Reject",
+    product: "HBM-Socket evaluation lot",
+    stage: "TEST",
+    programRev: "FT-HBM-118",
+    tatTarget: "≤ 12 h",
+    window: "2026.07.22—08.04",
+    signal: "SCK-07에서 최초 Fail의 76%가 alternate socket 재검에서 회복됩니다.",
+    signalDetail: "패키지 기인 불량보다 contact 저항·오염에 의한 false reject 가능성이 우선입니다.",
+    targetYield: 97,
+    dppmLimit: 15000,
+    retestTarget: 60,
+    latestYield: 97.44,
+    activeFpy: 97.44,
+    activeDppm: 25600,
+    activeRetestRecovery: 76,
+    topDefectShare: 52,
+  },
+  muf: {
+    caseLabel: "MUF Delamination",
+    product: "Stacked-M12",
+    stage: "PACKAGE",
+    programRev: "FT-M12-205",
+    tatTarget: "≤ 24 h",
+    window: "2026.06.18—07.02",
+    signal: "MUF-24B material lot에서 SAM delamination이 2주 기준 대비 3.9배 증가했습니다.",
+    signalDetail: "Floor time 상단과 vacuum 편차가 겹친 3개 LOT에서 신호가 집중됩니다.",
+    targetYield: 97,
+    dppmLimit: 15000,
+    retestTarget: 60,
+    latestYield: 98.79,
+    activeFpy: 98.63,
+    activeDppm: 13700,
+    activeRetestRecovery: 22,
+    topDefectShare: 43,
+  },
+};
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function normalizeScenarioSettings(settings: ScenarioSettings): ScenarioSettings {
+  return {
+    ...settings,
+    caseLabel: settings.caseLabel.trim().slice(0, 80) || "Untitled Case",
+    product: settings.product.trim().slice(0, 80) || "Custom product",
+    programRev: settings.programRev.trim().slice(0, 40) || "CUSTOM-REV",
+    tatTarget: settings.tatTarget.trim().slice(0, 24) || "사용자 기준",
+    window: settings.window.trim().slice(0, 40) || "사용자 입력 기간",
+    signal: settings.signal.trim().slice(0, 180) || "사용자 품질 신호를 입력해 주세요.",
+    signalDetail: settings.signalDetail.trim().slice(0, 240) || "신호가 집중된 LOT·장비·교대 조건을 입력해 주세요.",
+    targetYield: clampNumber(settings.targetYield, 0, 100),
+    dppmLimit: Math.round(clampNumber(settings.dppmLimit, 0, 1_000_000)),
+    retestTarget: clampNumber(settings.retestTarget, 0, 100),
+    latestYield: clampNumber(settings.latestYield, 0, 100),
+    activeFpy: clampNumber(settings.activeFpy, 0, 100),
+    activeDppm: Math.round(clampNumber(settings.activeDppm, 0, 1_000_000)),
+    activeRetestRecovery: clampNumber(settings.activeRetestRecovery, 0, 100),
+    topDefectShare: clampNumber(settings.topDefectShare, 0, 100),
+  };
+}
+
+function parseScenarioSettingsMap(value: unknown): ScenarioSettingsMap | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const next = {} as ScenarioSettingsMap;
+  for (const key of SCENARIO_ORDER) {
+    const item = source[key];
+    if (!item || typeof item !== "object") return null;
+    const row = item as Record<string, unknown>;
+    if (
+      typeof row.caseLabel !== "string" || typeof row.product !== "string" ||
+      (row.stage !== "PACKAGE" && row.stage !== "TEST") || typeof row.programRev !== "string" ||
+      typeof row.tatTarget !== "string" || typeof row.window !== "string" || typeof row.signal !== "string" || typeof row.signalDetail !== "string" ||
+      !["targetYield", "dppmLimit", "retestTarget", "latestYield", "activeFpy", "activeDppm", "activeRetestRecovery", "topDefectShare"].every((field) => typeof row[field] === "number")
+    ) return null;
+    next[key] = normalizeScenarioSettings(row as unknown as ScenarioSettings);
+  }
+  return next;
+}
+
 export function YieldDashboard() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>("stacker");
   const [roleLens, setRoleLens] = useState<RoleLens>("test");
+  const [scenarioSettings, setScenarioSettings] = useState<ScenarioSettingsMap>(DEFAULT_SCENARIO_SETTINGS);
+  const [draftSettings, setDraftSettings] = useState<ScenarioSettings>(DEFAULT_SCENARIO_SETTINGS.stacker);
+  const [dataStudioOpen, setDataStudioOpen] = useState(false);
   const scenario = SCENARIOS[scenarioKey];
   const operations = TEST_OPERATIONS[scenarioKey];
   const controlPlan = TEST_CONTROL_PLANS[scenarioKey];
+  const activeSettings = scenarioSettings[scenarioKey];
   const [selectedTrend, setSelectedTrend] = useState(scenario.trend.length - 1);
   const [selectedDefect, setSelectedDefect] = useState(scenario.pareto[0].code);
   const [activeFlowStage, setActiveFlowStage] = useState<TestFlowStageKey>("final-test");
@@ -140,10 +270,12 @@ export function YieldDashboard() {
   const [dispositionBusy, setDispositionBusy] = useState<string | null>(null);
   const [handoffAcknowledged, setHandoffAcknowledged] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
+  const settingsFileRef = useRef<HTMLInputElement>(null);
 
   function selectScenario(key: ScenarioKey) {
     const nextScenario = SCENARIOS[key];
     setScenarioKey(key);
+    setDraftSettings(scenarioSettings[key]);
     setSelectedTrend(nextScenario.trend.length - 1);
     setSelectedDefect(nextScenario.pareto[0].code);
     setActiveFlowStage("final-test");
@@ -155,6 +287,57 @@ export function YieldDashboard() {
     setHandoffAcknowledged([]);
   }
 
+  function persistScenarioSettings(next: ScenarioSettingsMap) {
+    setScenarioSettings(next);
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function saveScenarioSettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = normalizeScenarioSettings(draftSettings);
+    const next = { ...scenarioSettings, [scenarioKey]: normalized };
+    persistScenarioSettings(next);
+    setDraftSettings(normalized);
+    setDataStudioOpen(false);
+    setNotice(`${normalized.caseLabel} 설정을 저장했습니다. 분석 지표에 즉시 반영됩니다.`);
+  }
+
+  function resetCurrentScenarioSettings() {
+    const next = { ...scenarioSettings, [scenarioKey]: DEFAULT_SCENARIO_SETTINGS[scenarioKey] };
+    persistScenarioSettings(next);
+    setDraftSettings(next[scenarioKey]);
+    setNotice("현재 Case를 기본 설정으로 복원했습니다.");
+  }
+
+  function exportScenarioSettings() {
+    const payload = JSON.stringify(scenarioSettings, null, 2);
+    const url = URL.createObjectURL(new Blob([payload], { type: "application/json;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "yieldscope-pnt-settings.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice("Case 설정 JSON을 내보냈습니다.");
+  }
+
+  async function importScenarioSettings(file: File) {
+    try {
+      const parsed = parseScenarioSettingsMap(JSON.parse(await file.text()));
+      if (!parsed) throw new Error("invalid settings");
+      persistScenarioSettings(parsed);
+      setDraftSettings(parsed[scenarioKey]);
+      setNotice("Case 설정을 불러왔습니다. 모든 지표에 반영했습니다.");
+    } catch {
+      setNotice("설정 파일을 읽지 못했습니다. Data Studio에서 내보낸 JSON인지 확인해 주세요.");
+    }
+  }
+
+  function handleSettingsFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void importScenarioSettings(file);
+  }
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -164,11 +347,27 @@ export function YieldDashboard() {
       if (event.key === "Escape") {
         setQuery("");
         searchRef.current?.blur();
+        setDataStudioOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+      const parsed = stored ? parseScenarioSettingsMap(JSON.parse(stored)) : null;
+      if (parsed) {
+        window.setTimeout(() => {
+          setScenarioSettings(parsed);
+          setDraftSettings(parsed[scenarioKey]);
+        }, 0);
+      }
+    } catch {
+      // A malformed local setting must not block the read-only demo view.
+    }
+  }, [scenarioKey]);
 
   useEffect(() => {
     if (!notice) return;
@@ -203,11 +402,26 @@ export function YieldDashboard() {
     );
   }, [query, scenario.lots]);
 
-  const selectedPoint = scenario.trend[selectedTrend];
-  const activeStage = operations.stages.find((stage) => stage.key === activeFlowStage) ?? operations.stages[3];
+  const configuredTrend = useMemo(
+    () => scenario.trend.map((point, index) => index === scenario.trend.length - 1 ? { ...point, yield: activeSettings.latestYield } : point),
+    [activeSettings.latestYield, scenario.trend],
+  );
+  const configuredPareto = useMemo(
+    () => scenario.pareto.map((item, index) => index === 0 ? { ...item, share: activeSettings.topDefectShare } : item),
+    [activeSettings.topDefectShare, scenario.pareto],
+  );
+  const selectedPoint = configuredTrend[selectedTrend] ?? configuredTrend[configuredTrend.length - 1];
+  const baseActiveStage = operations.stages.find((stage) => stage.key === activeFlowStage) ?? operations.stages[3];
+  const activeStage = useMemo(
+    () => baseActiveStage.key === "final-test"
+      ? { ...baseActiveStage, fpy: activeSettings.activeFpy, dppm: activeSettings.activeDppm, retestRecovery: activeSettings.activeRetestRecovery }
+      : baseActiveStage,
+    [activeSettings.activeDppm, activeSettings.activeFpy, activeSettings.activeRetestRecovery, baseActiveStage],
+  );
   const activeBin = operations.bins.find((bin) => bin.code === selectedBin) ?? operations.bins[0];
-  const trendMin = Math.min(...scenario.trend.map((point) => point.yield));
-  const trendMax = Math.max(...scenario.trend.map((point) => point.yield));
+  const trendMin = Math.min(...configuredTrend.map((point) => point.yield));
+  const trendMax = Math.max(...configuredTrend.map((point) => point.yield));
+  const targetLineTop = clampNumber(100 - (28 + ((activeSettings.targetYield - trendMin) / Math.max(0.01, trendMax - trendMin)) * 62), 5, 95);
   const maxPareto = Math.max(...scenario.pareto.map((item) => item.count));
   const maxValidation = Math.max(...scenario.validation.series.map((item) => item.value));
   const latestDispositionByLot = useMemo(() => {
@@ -225,21 +439,30 @@ export function YieldDashboard() {
     const holdStages = operations.stages.filter((stage) => stage.status === "hold");
     const attentionAssets = operations.assets.filter((asset) => asset.status !== "정상");
     const blockingAssets = operations.assets.filter((asset) => asset.status === "점검");
+    const latestYield = configuredTrend[configuredTrend.length - 1]?.yield ?? 0;
+    const yieldState = latestYield >= activeSettings.targetYield ? "pass" as const : latestYield >= activeSettings.targetYield - 0.5 ? "watch" as const : "pending" as const;
+    const dppmState = activeStage.dppm <= activeSettings.dppmLimit ? "pass" as const : activeStage.dppm <= activeSettings.dppmLimit * 1.2 ? "watch" as const : "pending" as const;
     const score = Math.max(
       0,
-      Math.round(((gatePass + gateWatch * 0.55) / controlPlan.gates.length) * 100 - holdStages.length * 12 - blockingAssets.length * 10),
+      Math.round(((gatePass + gateWatch * 0.55) / controlPlan.gates.length) * 100 - holdStages.length * 12 - blockingAssets.length * 10 - (yieldState === "pending" ? 8 : yieldState === "watch" ? 3 : 0) - (dppmState === "pending" ? 6 : dppmState === "watch" ? 2 : 0)),
     );
-    const status: ReleaseStatus = gatePending.length > 0 || holdStages.length > 0 || blockingAssets.length > 0
+    const status: ReleaseStatus = gatePending.length > 0 || holdStages.length > 0 || blockingAssets.length > 0 || yieldState === "pending" || dppmState === "pending"
       ? "HOLD"
-      : gateWatch > 0 || attentionAssets.length > 0
+      : gateWatch > 0 || attentionAssets.length > 0 || yieldState === "watch" || dppmState === "watch"
         ? "CONDITIONAL"
         : "GO";
     const checks = [
+      { label: "Yield target", value: `${latestYield.toFixed(2)}% / ${activeSettings.targetYield.toFixed(2)}%`, state: yieldState },
+      { label: "Final Test DPPM", value: `${activeStage.dppm.toLocaleString()} / ${activeSettings.dppmLimit.toLocaleString()}`, state: dppmState },
       ...controlPlan.gates.map((gate) => ({ label: gate.label, value: gate.value, state: gate.state })),
       { label: "Flow health", value: holdStages.length > 0 ? `${holdStages[0].label} stage hold` : "No stage hold", state: holdStages.length > 0 ? "pending" as const : "pass" as const },
       { label: "Tester / socket", value: blockingAssets.length > 0 ? `${blockingAssets[0].id} 점검 필요` : attentionAssets.length > 0 ? `${attentionAssets.length}개 자산 주의` : "All assets normal", state: blockingAssets.length > 0 ? "pending" as const : attentionAssets.length > 0 ? "watch" as const : "pass" as const },
     ];
-    const nextAction = gatePending[0]
+    const nextAction = yieldState === "pending"
+      ? `Yield target ${activeSettings.targetYield.toFixed(2)}% 미달 · 원인 재현 및 조치 후 재검`
+      : dppmState === "pending"
+        ? `Final Test DPPM ${activeSettings.dppmLimit.toLocaleString()} 초과 · Bin / tester correlation 확인`
+        : gatePending[0]
       ? `${gatePending[0].label} 확인 후 Test QE 승인`
       : holdStages[0]
         ? `${holdStages[0].label}의 HOLD 원인 재현 및 교차 확인`
@@ -247,22 +470,22 @@ export function YieldDashboard() {
           ? `${attentionAssets[0].id} PM / 상태 확인 후 correlation 재검`
           : "다음 LOT의 golden sample과 TAT를 함께 확인";
     return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
-  }, [controlPlan, operations]);
+  }, [activeSettings.dppmLimit, activeSettings.targetYield, activeStage, configuredTrend, controlPlan, operations]);
 
   const lens = ROLE_LENSES[roleLens];
   const decisionBrief = useMemo(() => {
     const signal = roleLens === "test"
       ? `${activeStage.label} · ${activeStage.dppm.toLocaleString()} DPPM · retest ${activeStage.retestRecovery}%`
       : roleLens === "quality"
-        ? `${releaseReadiness.gatePass}/${controlPlan.gates.length} gate pass · ${scenario.pareto[0].share}% top defect share`
+        ? `${releaseReadiness.gatePass}/${controlPlan.gates.length} gate pass · ${configuredPareto[0].share}% top defect share`
         : `${activeStage.fpy.toFixed(2)}% FPY · ${activeStage.uph.toLocaleString()} UPH · ${activeStage.utilization}% util.`;
     const signalDetail = roleLens === "test"
       ? `Testability 신호를 먼저 분리합니다. ${activeStage.note}`
       : roleLens === "quality"
-        ? `현재 우선 불량은 ${scenario.pareto[0].label}입니다. ${scenario.signalDetail}`
+        ? `현재 우선 불량은 ${configuredPareto[0].label}입니다. ${activeSettings.signalDetail}`
         : `현재 병목은 ${activeStage.label}입니다. ${operations.focus}`;
     const decision = roleLens === "test"
-      ? `${activeStage.retestRecovery >= 60 ? "Testability 우선" : "제품 기인 우선"} · ${releaseReadiness.status}`
+      ? `${activeStage.retestRecovery >= activeSettings.retestTarget ? "Testability 우선" : "제품 기인 우선"} · ${releaseReadiness.status}`
       : roleLens === "quality"
         ? `${releaseReadiness.status} · ${releaseReadiness.score}% readiness`
         : `${activeStage.status === "hold" ? "Stage hold" : activeStage.status === "watch" ? "Watch" : "Stable"} · ${activeStage.loss}`;
@@ -277,7 +500,7 @@ export function YieldDashboard() {
         ? "Test QE · Quality / FA"
         : `${activeStage.owner} · Manufacturing / PE`;
     return { signal, signalDetail, decision, decisionDetail, owner };
-  }, [activeStage, controlPlan.gates.length, operations, releaseReadiness, roleLens, scenario.pareto, scenario.signalDetail]);
+  }, [activeSettings.retestTarget, activeSettings.signalDetail, activeStage, configuredPareto, controlPlan.gates.length, operations, releaseReadiness, roleLens]);
 
   const handoffDone = operations.handoff.filter((item) => handoffAcknowledged.includes(`${scenarioKey}:${item.label}`)).length;
 
@@ -440,6 +663,13 @@ export function YieldDashboard() {
             >
               <FileText className="size-3.5" /> 분석 리포트
             </button>
+            <button
+              type="button"
+              onClick={() => { setDraftSettings(activeSettings); setDataStudioOpen(true); }}
+              className="hidden h-9 items-center gap-2 rounded-xl border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-3.5 text-[11px] font-medium text-[#b4ddf3] transition hover:border-[#55b8f6]/35 hover:bg-[#55b8f6]/[0.11] sm:flex"
+            >
+              <Settings2 className="size-3.5" /> 데이터 설정
+            </button>
             <span className="rounded-full border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1.5 text-[10px] font-medium text-[#6ee0c3]">100% 합성 데이터</span>
           </div>
         </div>
@@ -452,6 +682,9 @@ export function YieldDashboard() {
                   <Icon className="size-4 text-[#f2b84b]" /> {label}
                 </button>
               ))}
+              <button type="button" onClick={() => { setDraftSettings(activeSettings); setDataStudioOpen(true); setMobileNav(false); }} className="flex items-center gap-2 rounded-xl border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-3 py-3 text-left text-xs text-[#b4ddf3]">
+                <Settings2 className="size-4 text-[#55b8f6]" /> 데이터 설정
+              </button>
             </div>
           </nav>
         )}
@@ -479,7 +712,6 @@ export function YieldDashboard() {
             <p className="text-[9px] font-semibold tracking-[0.18em] text-[#5f6e84]">ACTIVE CASE</p>
             <div className="mt-3 space-y-2">
               {SCENARIO_ORDER.map((key, index) => {
-                const item = SCENARIOS[key];
                 const active = key === scenarioKey;
                 return (
                   <button
@@ -489,7 +721,7 @@ export function YieldDashboard() {
                     className={`w-full rounded-xl border p-3 text-left transition ${active ? "border-[#f2b84b]/25 bg-[#f2b84b]/[0.07]" : "border-transparent hover:border-white/[0.07] hover:bg-white/[0.025]"}`}
                   >
                     <span className={`text-[9px] font-semibold tracking-[0.12em] ${active ? "text-[#dcb45e]" : "text-[#5f6e84]"}`}>CASE 0{index + 1}</span>
-                    <span className={`mt-1 block text-[11px] font-medium ${active ? "text-[#e8edf5]" : "text-[#8795aa]"}`}>{item.shortLabel}</span>
+                    <span className={`mt-1 block truncate text-[11px] font-medium ${active ? "text-[#e8edf5]" : "text-[#8795aa]"}`} title={scenarioSettings[key].caseLabel}>{scenarioSettings[key].caseLabel}</span>
                   </button>
                 );
               })}
@@ -518,8 +750,8 @@ export function YieldDashboard() {
                   기간
                   <select className="bg-transparent font-medium text-[#e3eaf4] outline-none" defaultValue="30"><option className="bg-[#101a29]" value="30">최근 30일</option><option className="bg-[#101a29]" value="90">최근 90일</option></select>
                 </label>
-                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]">제품군 <strong className="ml-2 font-medium text-[#e3eaf4]">Stacked-M</strong></span>
-                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]">공정 <strong className="ml-2 font-medium text-[#e3eaf4]">{scenario.stage}</strong></span>
+                <span className="max-w-[220px] truncate rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]" title={activeSettings.product}>제품군 <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.product}</strong></span>
+                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]">공정 <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.stage}</strong></span>
                 <button type="button" onClick={() => { setQuery(""); setSelectedLots([]); }} className="grid size-9 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#8b9aaf] transition hover:text-white" aria-label="필터 초기화"><RotateCcw className="size-3.5" /></button>
               </div>
             </div>
@@ -639,18 +871,18 @@ export function YieldDashboard() {
             <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1.62fr)_minmax(330px,0.8fr)]">
               <Panel className="p-5 sm:p-6">
                 <PanelHeading
-                  eyebrow={`${scenario.incidentWindow} · ${scenario.stage}`}
+                  eyebrow={`${activeSettings.window} · ${activeSettings.stage}`}
                   title="Final yield p-chart"
-                  description="일별 최종 수율 · 점선은 내부 데모 목표선 97.0%"
+                  description={`일별 최종 수율 · 점선은 사용자 설정 목표선 ${activeSettings.targetYield.toFixed(2)}%`}
                   action={<span className="rounded-lg border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1 text-[10px] text-[#65ddbf]">조치 후 안정화</span>}
                 />
                 <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_150px]">
                   <div>
                     <div className="relative h-[230px] overflow-hidden rounded-xl border border-white/[0.055] bg-[#0b1422]/78 px-3 pb-7 pt-4 sm:px-4">
                       {[25, 50, 75].map((line) => <span key={line} className="pointer-events-none absolute inset-x-3 border-t border-white/[0.045] sm:inset-x-4" style={{ top: `${line}%` }} />)}
-                      <div className="pointer-events-none absolute inset-x-3 top-[31%] border-t border-dashed border-[#f2b84b]/38 sm:inset-x-4"><span className="absolute -top-4 right-0 text-[8px] font-medium text-[#b59552]">TARGET 97.0</span></div>
+                      <div className="pointer-events-none absolute inset-x-3 border-t border-dashed border-[#f2b84b]/38 sm:inset-x-4" style={{ top: `${targetLineTop}%` }}><span className="absolute -top-4 right-0 text-[8px] font-medium text-[#b59552]">TARGET {activeSettings.targetYield.toFixed(2)}</span></div>
                       <div className="relative flex h-full items-end gap-1.5 sm:gap-2">
-                        {scenario.trend.map((point, index) => {
+                        {configuredTrend.map((point, index) => {
                           const height = 28 + ((point.yield - trendMin) / Math.max(0.01, trendMax - trendMin)) * 62;
                           const active = index === selectedTrend;
                           return (
@@ -673,7 +905,7 @@ export function YieldDashboard() {
                     <div className="mt-3 flex flex-wrap items-center gap-4 text-[9px] text-[#627187]">
                       <span className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[#31c7a2]" /> 관리 한계 내</span>
                       <span className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[#f36b78]" /> LCL 이탈</span>
-                      <span className="flex items-center gap-1.5"><span className="h-px w-3 border-t border-dashed border-[#f2b84b]" /> 목표 97.0%</span>
+                      <span className="flex items-center gap-1.5"><span className="h-px w-3 border-t border-dashed border-[#f2b84b]" /> 목표 {activeSettings.targetYield.toFixed(2)}%</span>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:content-center">
@@ -694,8 +926,8 @@ export function YieldDashboard() {
                   </div>
                   <span className="grid size-10 place-items-center rounded-xl border border-[#f2b84b]/20 bg-[#f2b84b]/10 text-[#f2b84b]"><AlertTriangle className="size-5" /></span>
                 </div>
-                <h2 className="relative mt-7 text-xl font-semibold leading-8 tracking-[-0.03em] sm:text-[22px]">{scenario.signal}</h2>
-                <p className="relative mt-4 text-[13px] leading-6 text-[#8997aa]">{scenario.signalDetail}</p>
+                <h2 className="relative mt-7 text-xl font-semibold leading-8 tracking-[-0.03em] sm:text-[22px]">{activeSettings.caseLabel} · {activeSettings.signal}</h2>
+                <p className="relative mt-4 text-[13px] leading-6 text-[#8997aa]">{activeSettings.signalDetail}</p>
 
                 <div className="relative mt-6 grid grid-cols-4 gap-1.5">
                   {["Detect", "Isolate", "Confirm", "Improve"].map((step, index) => (
@@ -717,7 +949,7 @@ export function YieldDashboard() {
             <Panel className="mt-5 overflow-hidden p-5 sm:p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <PanelHeading eyebrow="TEST RELEASE CONTROL" title="양산 투입 전 Test Plan을 잠그는 화면" description="Databook / margin test → golden sample → tester correlation → 승인 기록의 순서로 release gate를 확인합니다." action={<span className="flex items-center gap-1.5 rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-2.5 py-1 text-[9px] text-[#a5d8f4]"><ShieldCheck className="size-3" /> controlled plan</span>} />
-                <div className="grid grid-cols-2 gap-2 text-[9px] sm:grid-cols-4"><PlanMeta label="PRODUCT" value={controlPlan.product} /><PlanMeta label="STAGE" value={controlPlan.testStage} /><PlanMeta label="PROGRAM" value={controlPlan.programRev} /><PlanMeta label="TAT TARGET" value={controlPlan.tatTarget} /></div>
+                <div className="grid grid-cols-2 gap-2 text-[9px] sm:grid-cols-4"><PlanMeta label="PRODUCT" value={activeSettings.product} /><PlanMeta label="STAGE" value={activeSettings.stage === "PACKAGE" ? "Package + Final Test" : "Final Test"} /><PlanMeta label="PROGRAM" value={activeSettings.programRev} /><PlanMeta label="TAT TARGET" value={activeSettings.tatTarget} /></div>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0b1422]/65 p-3.5"><GitBranch className="size-3.5 text-[#f2b84b]" /><span className="text-[9px] font-semibold tracking-[0.08em] text-[#8998ac]">CONTROLLED FLOW</span><span className="text-[10px] text-[#d3deea]">{controlPlan.flow}</span><span className="ml-auto rounded-md bg-white/[0.04] px-2 py-1 text-[8px] text-[#728198]">{controlPlan.specProfile}</span></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -731,7 +963,7 @@ export function YieldDashboard() {
                   eyebrow="MASS PRODUCTION TEST FLOW"
                   title="공정 단계별 수율·Capacity"
                   description={operations.focus}
-                  action={<span className="rounded-lg border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1 text-[9px] font-medium text-[#6bdfc1]">{operations.window}</span>}
+                  action={<span className="rounded-lg border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1 text-[9px] font-medium text-[#6bdfc1]">{activeSettings.window} · {operations.window.split("·").at(-1)?.trim() ?? "사용자 설정"}</span>}
                 />
 
                 <div className="mt-6 grid gap-2 md:grid-cols-5">
@@ -763,8 +995,8 @@ export function YieldDashboard() {
                     <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       <OpsMetric label="Input" value={activeStage.input.toLocaleString()} unit="pcs" />
                       <OpsMetric label="Tested" value={activeStage.tested.toLocaleString()} unit="pcs" />
-                      <OpsMetric label="DPPM" value={activeStage.dppm.toLocaleString()} unit="" alert={activeStage.dppm > 15000} />
-                      <OpsMetric label="Retest recovery" value={`${activeStage.retestRecovery}`} unit="%" good={activeStage.retestRecovery >= 60} />
+                      <OpsMetric label="DPPM" value={activeStage.dppm.toLocaleString()} unit="" alert={activeStage.dppm > activeSettings.dppmLimit} />
+                      <OpsMetric label="Retest recovery" value={`${activeStage.retestRecovery}`} unit="%" good={activeStage.retestRecovery >= activeSettings.retestTarget} />
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/[0.06] bg-[#0b1422]/65 p-3.5">
@@ -828,11 +1060,11 @@ export function YieldDashboard() {
             <SectionHeader number="03" title="Defect Explorer" description="불량 구성과 장비 집중도를 함께 보며 손실의 80%를 만드는 구간부터 좁힙니다." />
             <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
               <Panel className="p-5 sm:p-6">
-                <PanelHeading eyebrow="DEFECT OCCURRENCES" title="불량 Pareto" description="결함 발생 건수 기준 · 불량품 수와 중복될 수 있음" action={<span className="text-[10px] text-[#6d7c92]">총 {scenario.pareto.reduce((sum, item) => sum + item.count, 0).toLocaleString()}건</span>} />
+                <PanelHeading eyebrow="DEFECT OCCURRENCES" title="불량 Pareto" description="결함 발생 건수 기준 · 불량품 수와 중복될 수 있음" action={<span className="text-[10px] text-[#6d7c92]">총 {configuredPareto.reduce((sum, item) => sum + item.count, 0).toLocaleString()}건</span>} />
                 <div className="mt-6 space-y-3">
-                  {scenario.pareto.map((item, index) => {
+                  {configuredPareto.map((item, index) => {
                     const active = item.code === selectedDefect;
-                    const cumulative = scenario.pareto.slice(0, index + 1).reduce((sum, row) => sum + row.share, 0);
+                    const cumulative = configuredPareto.slice(0, index + 1).reduce((sum, row) => sum + row.share, 0);
                     return (
                       <button key={item.code} type="button" onClick={() => setSelectedDefect(item.code)} aria-pressed={active} className={`grid w-full grid-cols-[38px_minmax(0,1fr)_44px] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? "border-[#f2b84b]/25 bg-[#f2b84b]/[0.055]" : "border-transparent hover:border-white/[0.06] hover:bg-white/[0.02]"}`}>
                         <span className={`grid size-8 place-items-center rounded-lg text-[9px] font-semibold ${active ? "bg-[#f2b84b]/15 text-[#ffd16b]" : "bg-white/[0.04] text-[#6f7e94]"}`}>{item.code}</span>
@@ -848,7 +1080,7 @@ export function YieldDashboard() {
               </Panel>
 
               <Panel className="p-5 sm:p-6">
-                <PanelHeading eyebrow="STRATIFIED RISK" title="공정 · 장비 집중도" description={`${scenario.pareto.find((item) => item.code === selectedDefect)?.label ?? "전체"} 기준 층화 비교`} action={<span className="rounded-lg bg-white/[0.04] px-2 py-1 text-[9px] text-[#8492a6]">RR = Risk ratio</span>} />
+                <PanelHeading eyebrow="STRATIFIED RISK" title="공정 · 장비 집중도" description={`${configuredPareto.find((item) => item.code === selectedDefect)?.label ?? "전체"} 기준 층화 비교`} action={<span className="rounded-lg bg-white/[0.04] px-2 py-1 text-[9px] text-[#8492a6]">RR = Risk ratio</span>} />
                 <div className="mt-6 overflow-hidden rounded-xl border border-white/[0.06]">
                   <div className="grid grid-cols-[minmax(90px,1fr)_74px_64px_66px] gap-2 bg-white/[0.025] px-3 py-2.5 text-[8px] font-semibold tracking-[0.1em] text-[#59687e]">
                     <span>TOOL / STAGE</span><span className="text-right">DEFECT %</span><span className="text-right">RR</span><span className="text-right">STATE</span>
@@ -1028,6 +1260,99 @@ export function YieldDashboard() {
         </main>
       </div>
 
+      {dataStudioOpen && (
+        <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-labelledby="data-studio-title">
+          <button type="button" aria-label="데이터 설정 닫기" onClick={() => setDataStudioOpen(false)} className="absolute inset-0 cursor-default bg-[#020711]/72 backdrop-blur-[2px]" />
+          <aside className="absolute inset-y-0 right-0 flex w-full max-w-[470px] flex-col border-l border-white/[0.1] bg-[#0a1321] shadow-[-18px_0_70px_rgba(0,0,0,0.35)]">
+            <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-5 sm:px-6">
+              <div>
+                <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.15em] text-[#8fcbe9]"><Settings2 className="size-3.5" /> DATA STUDIO</div>
+                <h2 id="data-studio-title" className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-[#eef4fb]">{activeSettings.caseLabel} 설정</h2>
+                <p className="mt-1.5 text-[10px] leading-5 text-[#7f8ea4]">팀의 Case·기준값·핵심 Test 지표를 입력하면 화면 전체에 반영됩니다.</p>
+              </div>
+              <button type="button" onClick={() => setDataStudioOpen(false)} aria-label="데이터 설정 닫기" className="grid size-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-[#8291a6] transition hover:border-white/[0.18] hover:text-white"><X className="size-4" /></button>
+            </div>
+
+            <form onSubmit={saveScenarioSettings} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+                <div className="rounded-xl border border-[#55b8f6]/15 bg-[#55b8f6]/[0.045] p-3.5 text-[9px] leading-5 text-[#89a9be]">
+                  <span className="font-medium text-[#b9e1f6]">설정 적용 범위</span> · 현재 Case의 제품 컨텍스트, Release gate 기준, Final Test 핵심값, Pareto 우선순위를 변경합니다. 원본 합성 데이터는 유지되며 언제든 기본값으로 복원할 수 있습니다.
+                </div>
+
+                <fieldset>
+                  <legend className="text-[9px] font-semibold tracking-[0.13em] text-[#718198]">CASE CONTEXT</legend>
+                  <div className="mt-3 space-y-3">
+                    <StudioField label="Case 이름" hint="Overview와 Case 목록에 표시">
+                      <input value={draftSettings.caseLabel} onChange={(event) => setDraftSettings((current) => ({ ...current, caseLabel: event.target.value }))} className="studio-input" maxLength={80} />
+                    </StudioField>
+                    <StudioField label="제품군" hint="Test Plan과 상단 필터에 표시">
+                      <input value={draftSettings.product} onChange={(event) => setDraftSettings((current) => ({ ...current, product: event.target.value }))} className="studio-input" maxLength={80} />
+                    </StudioField>
+                    <StudioField label="품질 신호" hint="Active Quality Signal 제목">
+                      <textarea value={draftSettings.signal} onChange={(event) => setDraftSettings((current) => ({ ...current, signal: event.target.value }))} className="studio-input min-h-20 resize-y" maxLength={180} />
+                    </StudioField>
+                    <StudioField label="신호 상세" hint="집중 LOT·장비·교대 조건">
+                      <textarea value={draftSettings.signalDetail} onChange={(event) => setDraftSettings((current) => ({ ...current, signalDetail: event.target.value }))} className="studio-input min-h-20 resize-y" maxLength={240} />
+                    </StudioField>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <StudioField label="공정 범위">
+                        <select value={draftSettings.stage} onChange={(event) => setDraftSettings((current) => ({ ...current, stage: event.target.value as ScenarioSettings["stage"] }))} className="studio-input"><option value="PACKAGE">PACKAGE</option><option value="TEST">TEST</option></select>
+                      </StudioField>
+                      <StudioField label="Program Rev">
+                        <input value={draftSettings.programRev} onChange={(event) => setDraftSettings((current) => ({ ...current, programRev: event.target.value }))} className="studio-input" maxLength={40} />
+                      </StudioField>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <StudioField label="분석 기간">
+                        <input value={draftSettings.window} onChange={(event) => setDraftSettings((current) => ({ ...current, window: event.target.value }))} className="studio-input" maxLength={40} />
+                      </StudioField>
+                      <StudioField label="TAT 기준">
+                        <input value={draftSettings.tatTarget} onChange={(event) => setDraftSettings((current) => ({ ...current, tatTarget: event.target.value }))} className="studio-input" maxLength={24} />
+                      </StudioField>
+                    </div>
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend className="text-[9px] font-semibold tracking-[0.13em] text-[#718198]">RELEASE CRITERIA</legend>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <StudioField label="Yield 목표 (%)" hint="Latest yield 기준"><input type="number" min="0" max="100" step="0.01" value={draftSettings.targetYield} onChange={(event) => setDraftSettings((current) => ({ ...current, targetYield: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="DPPM 한계" hint="Final Test 기준"><input type="number" min="0" max="1000000" step="100" value={draftSettings.dppmLimit} onChange={(event) => setDraftSettings((current) => ({ ...current, dppmLimit: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="Retest 목표 (%)" hint="Testability 분기 기준"><input type="number" min="0" max="100" step="1" value={draftSettings.retestTarget} onChange={(event) => setDraftSettings((current) => ({ ...current, retestTarget: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                  </div>
+                </fieldset>
+
+                <fieldset>
+                  <legend className="text-[9px] font-semibold tracking-[0.13em] text-[#718198]">CURRENT TEST SNAPSHOT</legend>
+                  <p className="mt-2 text-[9px] leading-5 text-[#718097]">Final Test stage를 선택했을 때 Decision Brief와 운영 카드에 표시할 최신 관측값입니다.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <StudioField label="최신 Yield (%)"><input type="number" min="0" max="100" step="0.01" value={draftSettings.latestYield} onChange={(event) => setDraftSettings((current) => ({ ...current, latestYield: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="Top defect share (%)"><input type="number" min="0" max="100" step="1" value={draftSettings.topDefectShare} onChange={(event) => setDraftSettings((current) => ({ ...current, topDefectShare: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="Final Test FPY (%)"><input type="number" min="0" max="100" step="0.01" value={draftSettings.activeFpy} onChange={(event) => setDraftSettings((current) => ({ ...current, activeFpy: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="Final Test DPPM"><input type="number" min="0" max="1000000" step="100" value={draftSettings.activeDppm} onChange={(event) => setDraftSettings((current) => ({ ...current, activeDppm: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                    <StudioField label="Retest recovery (%)"><input type="number" min="0" max="100" step="1" value={draftSettings.activeRetestRecovery} onChange={(event) => setDraftSettings((current) => ({ ...current, activeRetestRecovery: Number(event.target.value) }))} className="studio-input" /></StudioField>
+                  </div>
+                </fieldset>
+
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.018] p-3.5">
+                  <p className="text-[9px] font-medium text-[#c5d1df]">팀 간 설정 공유</p>
+                  <p className="mt-1 text-[9px] leading-5 text-[#718097]">현재 모든 Case 설정을 JSON으로 내보내거나, 다른 팀이 만든 설정 파일을 불러옵니다.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={exportScenarioSettings} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[9px] font-medium text-[#aab8c9] transition hover:border-white/[0.18] hover:text-white"><Download className="size-3" /> JSON 내보내기</button>
+                    <button type="button" onClick={() => settingsFileRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[9px] font-medium text-[#aab8c9] transition hover:border-white/[0.18] hover:text-white"><Upload className="size-3" /> JSON 불러오기</button>
+                    <input ref={settingsFileRef} type="file" accept="application/json,.json" onChange={handleSettingsFileChange} className="hidden" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] bg-[#09111e] px-5 py-4 sm:px-6">
+                <button type="button" onClick={resetCurrentScenarioSettings} className="inline-flex items-center gap-1.5 text-[9px] text-[#8392a7] transition hover:text-[#d2dce8]"><RotateCcw className="size-3" /> 현재 Case 기본값 복원</button>
+                <div className="flex items-center gap-2"><button type="button" onClick={() => setDataStudioOpen(false)} className="rounded-lg border border-white/[0.08] px-3.5 py-2.5 text-[10px] font-medium text-[#95a4b6] transition hover:border-white/[0.16] hover:text-white">취소</button><button type="submit" className="rounded-lg bg-[#f2b84b] px-4 py-2.5 text-[10px] font-semibold text-[#181208] transition hover:bg-[#ffd16a]">설정 저장</button></div>
+              </div>
+            </form>
+          </aside>
+        </div>
+      )}
+
       {selectedLots.length > 0 && (
         <div className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center gap-3 rounded-2xl border border-[#f2b84b]/20 bg-[#111a28]/95 p-3 shadow-2xl backdrop-blur-xl">
           <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#f2b84b]/10 text-[#f2b84b]"><Layers3 className="size-4" /></span>
@@ -1053,6 +1378,10 @@ function requiresSignIn(response: Response) {
 
 function PlanMeta({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-white/[0.06] bg-white/[0.018] px-3 py-2"><p className="text-[7px] font-semibold tracking-[0.1em] text-[#617087]">{label}</p><p className="mt-1 text-[9px] font-medium text-[#cbd6e3]">{value}</p></div>;
+}
+
+function StudioField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return <label className="block"><span className="flex items-center justify-between gap-2 text-[9px] font-medium text-[#a9b7c8]"><span>{label}</span>{hint && <span className="text-[8px] font-normal text-[#637289]">{hint}</span>}</span><span className="mt-1.5 block">{children}</span></label>;
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {

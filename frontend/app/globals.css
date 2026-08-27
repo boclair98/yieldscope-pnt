@@ -50,3 +50,25 @@ select {
 button {
   cursor: pointer;
 }
+
+.studio-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.65rem 0.75rem;
+  color: #dce7f3;
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  outline: none;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.studio-input:focus {
+  border-color: rgba(242, 184, 75, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.studio-input::placeholder {
+  color: #5f6e84;
+}

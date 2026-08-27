@@ -50,7 +50,7 @@ SK hynix P&T Test 직무의 핵심 목표인 `수율·품질·생산성`을 한 
 | 도메인 | 반도체 Package & Test / 양산기술(P&T) |
 | 핵심 사용자 | P&T Test Engineer, 제조·양산기술, Package/Process, FA·Quality, Test QE |
 | 대표 시나리오 | Stacker 정렬 편차, Socket false reject, MUF delamination |
-| 핵심 결과물 | Role lens 기반 Decision Brief, Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
+| 핵심 결과물 | Role lens 기반 Decision Brief, Data Studio, Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
 | 서비스 | [yieldscope-pnt.coders.kr](https://yieldscope-pnt.coders.kr) |
 | 저장소 | [github.com/boclair98/yieldscope-pnt](https://github.com/boclair98/yieldscope-pnt) |
 
@@ -96,6 +96,18 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 ### 0. P&T Decision Brief
 
 화면 상단에서 `P&T Test / Quality·QE / Manufacturing` 관점을 전환하면 같은 Case를 역할별 의사결정 순서로 재정렬합니다. `현재 신호 → 지금 결정 → 다음 담당자`를 한 줄로 읽고, 해당 업무 화면으로 바로 이동할 수 있어 교대 리뷰와 면접 데모에서 핵심 판단을 빠르게 설명할 수 있습니다.
+
+### 0-1. Data Studio — Case 설정·공유
+
+고정 문구와 기준값을 코드에 직접 수정하지 않고, `데이터 설정` 패널에서 팀이 Case를 직접 구성할 수 있습니다.
+
+- 제품군·공정·Program Rev·TAT·분석 기간
+- Case 이름·품질 신호·신호 상세(집중 LOT·장비·교대 조건)
+- Yield 목표·Final Test DPPM 한계·Retest 목표
+- 최신 Yield·Final Test FPY/DPPM·Retest recovery·Top defect 비중
+- 브라우저 저장(localStorage), 현재 Case 기본값 복원, 전체 Case 설정 JSON 내보내기/불러오기
+
+저장한 설정은 차트·KPI·Release readiness·Decision Brief에 즉시 반영됩니다. 공개 데모의 입력 편의를 위한 기능이며, 사내 운영에서는 MES/TMS/Tester/Databook adapter와 승인 권한을 함께 연결하는 것을 전제로 합니다.
 
 ### 1. Test Release Control
 
@@ -188,7 +200,7 @@ users
 
 | 화면 | 확인할 수 있는 내용 |
 | --- | --- |
-| [Overview](https://yieldscope-pnt.coders.kr#overview) | 역할별 Decision Brief, Case 신호, Final yield, Release readiness |
+| [Overview](https://yieldscope-pnt.coders.kr#overview) | 역할별 Decision Brief, Data Studio, Case 신호, Final yield, Release readiness |
 | [Test Operations](https://yieldscope-pnt.coders.kr#test-ops) | Test Plan, stage별 FPY·DPPM·UPH·TAT, Bin, tester health |
 | [Defect Explorer](https://yieldscope-pnt.coders.kr#defects) | Pareto, risk ratio, LOT Watchlist, CSV export |
 | [RCA Workbench](https://yieldscope-pnt.coders.kr#rca) | 가설 신뢰도와 전기적·물리적 증거 체인 |
