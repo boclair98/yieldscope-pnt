@@ -99,7 +99,7 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 - `GO / CONDITIONAL / HOLD`와 readiness 점수, 다음 필수 확인 항목을 한 문장으로 제시합니다.
 - Yield gap, DPPM gap, 미해제 LOT·노출 수량을 기준값과 함께 표시합니다.
-- Retest recovery 기준에 따라 `Testability 선확인`과 `Product / Package FA 선확인` 방향을 분리합니다.
+- Retest recovery와 alternate tester/socket·물리 분석 증거를 함께 보며 `Testability 선확인`과 `Product / Package FA 선확인` 방향을 분리합니다.
 - Containment → Next check → Exit criteria를 `NOW / +60분 / +120분` Action queue로 배치합니다.
 - `Detect → Contain → Reproduce → Decide → Verify` Control loop에서 현재 단계와 다음 근거 화면을 연결합니다.
 

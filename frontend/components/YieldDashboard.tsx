@@ -592,12 +592,13 @@ export function YieldDashboard() {
     return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
   }, [activeSettings.dppmLimit, activeSettings.targetYield, activeStage, configuredTrend, controlPlan, operations]);
 
+  const testabilityFirst = activeStage.retestRecovery >= activeSettings.retestTarget && !/(package 원인 우선|SAM|물리 분석)/i.test(activeStage.note);
+
   const commandCenter = useMemo(() => {
     const attentionLots = activeLots.filter((lot) => lot.status !== "해제");
     const exposureUnits = attentionLots.reduce((sum, lot) => sum + lot.units, 0);
     const yieldGap = activeSettings.latestYield - activeSettings.targetYield;
     const dppmGap = activeStage.dppm - activeSettings.dppmLimit;
-    const testabilityFirst = activeStage.retestRecovery >= activeSettings.retestTarget;
     const currentLoopStep = releaseReadiness.status === "GO" ? 4 : releaseReadiness.status === "CONDITIONAL" ? 3 : 2;
     const decisionStatement = releaseReadiness.status === "GO"
       ? "필수 Gate와 Flow가 닫혔습니다. 다음 LOT의 Golden sample과 TAT를 감시하며 투입합니다."
@@ -605,7 +606,7 @@ export function YieldDashboard() {
         ? "Blocker가 남아 있습니다. 영향 LOT를 격리하고 재현·상관성 확인 전에는 투입하지 않습니다."
         : "조건부 투입입니다. Watch 항목의 Owner와 Exit criteria를 다음 교대까지 잠급니다.";
     return { attentionLots: attentionLots.length, exposureUnits, yieldGap, dppmGap, testabilityFirst, currentLoopStep, decisionStatement };
-  }, [activeLots, activeSettings.dppmLimit, activeSettings.latestYield, activeSettings.retestTarget, activeSettings.targetYield, activeStage.dppm, activeStage.retestRecovery, releaseReadiness.status]);
+  }, [activeLots, activeSettings.dppmLimit, activeSettings.latestYield, activeSettings.targetYield, activeStage.dppm, releaseReadiness.status, testabilityFirst]);
 
   const lens = ROLE_LENSES[roleLens];
   const decisionBrief = useMemo(() => {
@@ -620,7 +621,7 @@ export function YieldDashboard() {
         ? `현재 우선 불량은 ${configuredPareto[0].label}입니다. ${activeSettings.signalDetail}`
         : `현재 병목은 ${activeStage.label}입니다. ${operations.focus}`;
     const decision = roleLens === "test"
-      ? `${activeStage.retestRecovery >= activeSettings.retestTarget ? "Testability 우선" : "제품 기인 우선"} · ${releaseReadiness.status}`
+      ? `${testabilityFirst ? "Testability 우선" : "제품 / Package 원인 우선"} · ${releaseReadiness.status}`
       : roleLens === "quality"
         ? `${releaseReadiness.status} · ${releaseReadiness.score}% readiness`
         : `${activeStage.status === "hold" ? "Stage hold" : activeStage.status === "watch" ? "Watch" : "Stable"} · ${activeStage.loss}`;
@@ -635,7 +636,7 @@ export function YieldDashboard() {
         ? "Test QE · Quality / FA"
         : `${activeStage.owner} · Manufacturing / PE`;
     return { signal, signalDetail, decision, decisionDetail, owner };
-  }, [activeSettings.retestTarget, activeSettings.signalDetail, activeStage, configuredPareto, controlPlan.gates.length, operations, releaseReadiness, roleLens]);
+  }, [activeSettings.signalDetail, activeStage, configuredPareto, controlPlan.gates.length, operations, releaseReadiness, roleLens, testabilityFirst]);
 
   const handoffDone = operations.handoff.filter((item) => handoffAcknowledged.includes(`${scenarioKey}:${item.label}`)).length;
 
