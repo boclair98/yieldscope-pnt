@@ -4,9 +4,9 @@
 
 # YieldScope P&T
 
-### 반도체 P&T Test의 불량을 양산 판정과 개선 검증으로 연결하는 품질 운영 워크벤치
+### Test Program release부터 불량 격리·RCA·생산성 검증까지 연결하는 P&T Mass Production Engineering OS
 
-`Test release → 수율·Bin 분석 → LOT disposition → FA/RCA → CAPA validation`
+`Program qualification → Test release → LOT disposition → FA/RCA → CAPA validation`
 
 <p>
   <a href="https://yieldscope-pnt.coders.kr">
@@ -37,6 +37,7 @@
 SK hynix P&T Test 직무의 핵심 목표인 `수율·품질·생산성`을 한 화면의 숫자에 가두지 않고, 다음 교대와 유관 부서가 실행할 수 있는 판정 흐름으로 만드는 것을 목표로 했습니다.
 
 - Test release 전에 Databook, golden sample, tester correlation을 확인합니다.
+- Baseline/Candidate program의 correlation, false reject, guardband, multisite 편차와 test time 개선을 함께 검증합니다.
 - First fail과 retest recovery를 분리해 testability 문제와 제품 불량을 구분합니다.
 - LOT 단위의 HOLD / RELEASE / FA 결정을 사유·담당자·시각과 함께 남깁니다.
 - 전기적 재현, X-ray·SAM·단면 분석, 개선 후 LOT 검증을 하나의 증거 체인으로 관리합니다.
@@ -50,7 +51,7 @@ SK hynix P&T Test 직무의 핵심 목표인 `수율·품질·생산성`을 한 
 | 도메인 | 반도체 Package & Test / 양산기술(P&T) |
 | 핵심 사용자 | P&T Test Engineer, 제조·양산기술, Package/Process, FA·Quality, Test QE |
 | 대표 시나리오 | Stacker 정렬 편차, Socket false reject, MUF delamination |
-| 핵심 결과물 | Role lens 기반 Decision Brief, Data Studio, Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
+| 핵심 결과물 | Shift Command Center, Test Program Qualification, Decision Brief, Data Studio, Release readiness, Test flow, Bin triage, LOT disposition, RCA, CAPA validation |
 | 서비스 | [yieldscope-pnt.coders.kr](https://yieldscope-pnt.coders.kr) |
 | 저장소 | [github.com/boclair98/yieldscope-pnt](https://github.com/boclair98/yieldscope-pnt) |
 
@@ -67,7 +68,7 @@ P&T Test에서 “수율이 낮다”는 현상만으로는 다음 조치를 결
 따라서 이 프로젝트는 분석 화면을 여러 개 나열하는 대신 아래 순서를 하나의 사용자 여정으로 설계했습니다.
 
 ```text
-신호 감지 → 영향 LOT 격리 → Testability / Package 원인 분리
+Program qualification → 신호 감지 → 영향 LOT 격리 → Testability / Package 원인 분리
        → 교차 재현 → FA 증거 체인 → 조치 전후 검증 → 다음 교대 인계
 ```
 
@@ -77,6 +78,8 @@ P&T Test에서 “수율이 낮다”는 현상만으로는 다음 조치를 결
 공개 Case / 제품군 선택
         ↓
 EPM → Wafer Burn-in → Wafer Test / Repair → Package Test → Module Test
+        ↓
+Baseline / Candidate → Correlation·False reject·Guardband·Multisite → Program release
         ↓
 FPY·DPPM·Retest recovery·Test time·UPH·TAT 확인
         ↓
@@ -105,11 +108,20 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 이 UI는 단순 모니터링보다 **교대 시작 시 무엇을 멈추고, 누가 확인하며, 어떤 기준으로 다시 투입할지**를 빠르게 합의하는 데 초점을 맞췄습니다.
 
-### 0-1. P&T Decision Brief
+### 0-1. Test Program Qualification
+
+Baseline과 Candidate program을 같은 qualification LOT에서 비교해 변경 효과와 제품·Package 손실을 분리합니다.
+
+- Golden correlation, false reject delta, guardband coverage, multisite max delta를 release gate로 관리합니다.
+- 8-site yield map으로 평균 대비 site 편차를 확인하고 socket·contact 집중도를 빠르게 찾습니다.
+- Test time과 UPH는 전후값과 개선율을 함께 표시하되, 품질 gate가 깨지면 속도가 좋아져도 release하지 않습니다.
+- Case별로 `PROGRAM PASS · PRODUCT HOLD`, `HOLD · SOCKET RE-QUAL`, `PROGRAM PASS · MATERIAL HOLD`를 구분해 Program·제품·자재 판정을 섞지 않습니다.
+
+### 0-2. P&T Decision Brief
 
 화면 상단에서 `P&T Test / Quality·QE / Manufacturing` 관점을 전환하면 같은 Case를 역할별 의사결정 순서로 재정렬합니다. `현재 신호 → 지금 결정 → 다음 담당자`를 한 줄로 읽고, 해당 업무 화면으로 바로 이동할 수 있어 교대 리뷰와 면접 데모에서 핵심 판단을 빠르게 설명할 수 있습니다.
 
-### 0-2. Data Studio — Case 설정·공유
+### 0-3. Data Studio — Case 설정·공유
 
 고정 문구와 기준값을 코드에 직접 수정하지 않고, `데이터 설정` 패널에서 팀이 Case를 직접 구성할 수 있습니다.
 
@@ -157,6 +169,7 @@ Containment, Corrective, Preventive action의 전후 효과를 비교하고, 다
 ## 프로젝트 중점사항
 
 - **역할별로 같은 데이터를 다르게 읽기**: Test는 testability·retest, QE는 gate·disposition·evidence, Manufacturing은 FPY·UPH·TAT·handoff를 먼저 보도록 Decision Brief를 제공합니다.
+- **Program과 제품 원인을 분리하기**: Candidate program qualification이 통과해도 Package·material blocker가 남으면 제품 release는 별도로 HOLD합니다.
 - **수율만으로 결론 내리지 않기**: FPY·DPPM과 함께 Test time, UPH, utilization, TAT를 확인합니다.
 - **First fail과 실제 불량 분리하기**: retest recovery와 alternate tester/socket 재현을 함께 봅니다.
 - **상관과 인과 구분하기**: Risk ratio는 우선순위를 정하는 지표일 뿐 원인 확정값으로 표시하지 않습니다.
@@ -215,8 +228,8 @@ users
 
 | 화면 | 확인할 수 있는 내용 |
 | --- | --- |
-| [Overview](https://yieldscope-pnt.coders.kr#overview) | 역할별 Decision Brief, Data Studio, Case 신호, Final yield, Release readiness |
-| [Test Operations](https://yieldscope-pnt.coders.kr#test-ops) | Test Plan, stage별 FPY·DPPM·UPH·TAT, Bin, tester health |
+| [Shift Command](https://yieldscope-pnt.coders.kr#overview) | Release·Loss·Exposure·Owner·SLA, 역할별 Decision Brief, Data Studio |
+| [Test Operations](https://yieldscope-pnt.coders.kr#test-ops) | Program qualification, site yield map, Test Plan, FPY·DPPM·UPH·TAT, Bin, tester health |
 | [Defect Explorer](https://yieldscope-pnt.coders.kr#defects) | Pareto, risk ratio, LOT Watchlist, CSV export |
 | [RCA Workbench](https://yieldscope-pnt.coders.kr#rca) | 가설 신뢰도와 전기적·물리적 증거 체인 |
 | [Action Validation](https://yieldscope-pnt.coders.kr#validation) | Before/after, CAPA, 엔지니어 검토 노트 |

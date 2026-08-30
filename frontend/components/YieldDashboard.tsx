@@ -45,15 +45,17 @@ import {
   SCENARIOS,
   TEST_CONTROL_PLANS,
   TEST_OPERATIONS,
+  TEST_PROGRAM_QUALIFICATIONS,
   type DispositionAction,
   type LotDisposition,
+  type QualificationGateState,
   type Scenario,
   type TestFlowStageKey,
   type ScenarioKey,
 } from "@/lib/quality";
 
 const NAV = [
-  { id: "overview", label: "Overview", icon: Gauge },
+  { id: "overview", label: "Shift Command", icon: Gauge },
   { id: "test-ops", label: "Test Operations", icon: GitBranch },
   { id: "defects", label: "Defect Explorer", icon: BarChart3 },
   { id: "rca", label: "RCA Workbench", icon: Microscope },
@@ -338,6 +340,7 @@ export function YieldDashboard() {
   const scenario = SCENARIOS[scenarioKey];
   const operations = TEST_OPERATIONS[scenarioKey];
   const controlPlan = TEST_CONTROL_PLANS[scenarioKey];
+  const qualification = TEST_PROGRAM_QUALIFICATIONS[scenarioKey];
   const activeSettings = scenarioSettings[scenarioKey];
   const activeLots = customLots[scenarioKey] ?? scenario.lots;
   const [selectedTrend, setSelectedTrend] = useState(scenario.trend.length - 1);
@@ -593,6 +596,10 @@ export function YieldDashboard() {
   }, [activeSettings.dppmLimit, activeSettings.targetYield, activeStage, configuredTrend, controlPlan, operations]);
 
   const testabilityFirst = activeStage.retestRecovery >= activeSettings.retestTarget && !/(package 원인 우선|SAM|물리 분석)/i.test(activeStage.note);
+  const testTimeImprovement = ((qualification.baselineTestTime - qualification.candidateTestTime) / qualification.baselineTestTime) * 100;
+  const uphImprovement = ((qualification.candidateUph - qualification.baselineUph) / qualification.baselineUph) * 100;
+  const siteYieldMean = qualification.siteYields.reduce((sum, site) => sum + site.yield, 0) / qualification.siteYields.length;
+  const maxSiteDeviation = Math.max(...qualification.siteYields.map((site) => Math.abs(site.yield - siteYieldMean)));
 
   const commandCenter = useMemo(() => {
     const attentionLots = activeLots.filter((lot) => lot.status !== "해제");
@@ -767,7 +774,7 @@ export function YieldDashboard() {
             </span>
             <span>
               <span className="block text-[15px] font-semibold tracking-[-0.02em]">YieldScope</span>
-              <span className="block text-[9px] font-semibold tracking-[0.2em] text-[#7d8ba0]">P&amp;T QUALITY LAB</span>
+              <span className="block text-[9px] font-semibold tracking-[0.2em] text-[#7d8ba0]">P&amp;T ENGINEERING OS</span>
             </span>
           </button>
 
@@ -790,7 +797,7 @@ export function YieldDashboard() {
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 text-[11px] text-[#76859b] xl:flex">
               <span className="size-1.5 rounded-full bg-[#31c7a2] shadow-[0_0_0_3px_rgba(49,199,162,0.09)]" />
-              최근 갱신 2026.08.24 10:32 KST
+              DATA SNAPSHOT · {activeSettings.window}
             </div>
             <button
               type="button"
@@ -828,7 +835,7 @@ export function YieldDashboard() {
 
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 lg:grid-cols-[224px_minmax(0,1fr)]">
         <aside className="sticky top-16 hidden h-[calc(100vh-64px)] border-r border-white/[0.065] px-4 py-7 lg:flex lg:flex-col">
-          <p className="px-3 text-[9px] font-semibold tracking-[0.18em] text-[#5f6e84]">ANALYSIS FLOW</p>
+          <p className="px-3 text-[9px] font-semibold tracking-[0.18em] text-[#5f6e84]">ENGINEERING FLOW</p>
           <nav className="mt-3 space-y-1" aria-label="분석 단계">
             {NAV.map(({ id, label, icon: Icon }, index) => (
               <button
@@ -875,10 +882,10 @@ export function YieldDashboard() {
             <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.15em] text-[#f2b84b]">
-                  <span className="h-px w-6 bg-[#f2b84b]" /> QUALITY INTELLIGENCE
+                  <span className="h-px w-6 bg-[#f2b84b]" /> P&amp;T MASS PRODUCTION INTELLIGENCE
                 </div>
-                <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] sm:text-[34px]">불량 신호에서 개선 검증까지.</h1>
-                <p className="mt-2 max-w-3xl text-[13px] leading-6 text-[#8391a6] sm:text-sm">패키지·테스트 이력을 연결해 이상 감지, 기여 요인 분리, 물리 분석 증거, 개선 효과를 하나의 의사결정 흐름으로 탐색합니다.</p>
+                <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] sm:text-[34px]">양산 Test를 더 빠르고, 더 정확하게.</h1>
+                <p className="mt-2 max-w-3xl text-[13px] leading-6 text-[#8391a6] sm:text-sm">Test program release부터 불량 격리, 원인 재현, 생산성 검증까지 연결해 수율·품질·TAT를 한 번에 판단합니다.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -1161,7 +1168,7 @@ export function YieldDashboard() {
           </section>
 
           <section id="test-ops" className="scroll-mt-24 pt-10">
-            <SectionHeader number="02" title="Test Operations" description="Wafer·Package·Final Test의 손실을 한 흐름으로 연결하고, Bin·Retest·장비 상태를 근거로 다음 조치를 결정합니다." />
+            <SectionHeader number="02" title="Test Operations" description="Test program qualification과 Wafer·Package·Final Test 손실을 연결해 품질과 생산성을 함께 release합니다." />
 
             <Panel className="mt-5 overflow-hidden p-5 sm:p-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1171,6 +1178,49 @@ export function YieldDashboard() {
               <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#0b1422]/65 p-3.5"><GitBranch className="size-3.5 text-[#f2b84b]" /><span className="text-[9px] font-semibold tracking-[0.08em] text-[#8998ac]">CONTROLLED FLOW</span><span className="text-[10px] text-[#d3deea]">{controlPlan.flow}</span><span className="ml-auto rounded-md bg-white/[0.04] px-2 py-1 text-[8px] text-[#728198]">{controlPlan.specProfile}</span></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {controlPlan.gates.map((gate) => <div key={gate.label} className={`rounded-xl border p-3 ${gate.state === "pass" ? "border-[#31c7a2]/15 bg-[#31c7a2]/[0.04]" : gate.state === "watch" ? "border-[#f2b84b]/15 bg-[#f2b84b]/[0.04]" : "border-white/[0.07] bg-white/[0.018]"}`}><div className="flex items-center justify-between gap-2"><span className="text-[8px] text-[#718097]">{gate.label}</span><span className={`size-1.5 rounded-full ${gate.state === "pass" ? "bg-[#31c7a2]" : gate.state === "watch" ? "bg-[#f2b84b]" : "bg-[#69788e]"}`} /></div><p className="mt-2 text-[10px] font-medium text-[#d7e1ec]">{gate.value}</p><p className={`mt-1 text-[8px] uppercase tracking-[0.1em] ${gate.state === "pass" ? "text-[#68ddbf]" : gate.state === "watch" ? "text-[#ffd16b]" : "text-[#76859a]"}`}>{gate.state}</p></div>)}
+              </div>
+            </Panel>
+
+            <Panel className="mt-4 overflow-hidden border-[#55b8f6]/18 bg-[linear-gradient(135deg,rgba(85,184,246,0.065),rgba(17,27,43,0.82)_42%,rgba(49,199,162,0.035))]">
+              <div className="grid xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.12fr)_minmax(270px,0.72fr)]">
+                <div className="border-b border-white/[0.07] p-5 sm:p-6 xl:border-b-0 xl:border-r">
+                  <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.16em] text-[#8fcbe9]"><TestTube2 className="size-3.5" /> TEST PROGRAM QUALIFICATION</div>
+                  <h3 className="mt-3 text-[18px] font-semibold tracking-[-0.03em] text-[#eef4fb]">Baseline과 Candidate를 분리 검증</h3>
+                  <p className="mt-2 text-[10px] leading-5 text-[#8392a7]">Program 변경 효과와 제품·Package 손실을 섞지 않고 양산 release 근거를 잠급니다.</p>
+
+                  <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#08101d]/45 p-3"><p className="text-[7px] font-semibold tracking-[0.12em] text-[#627187]">BASELINE</p><p className="mt-2 text-[11px] font-semibold text-[#aebccc]">{qualification.baselineRev}</p></div>
+                    <ArrowRight className="size-4 text-[#4f6178]" />
+                    <div className="rounded-xl border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] p-3"><p className="text-[7px] font-semibold tracking-[0.12em] text-[#6faecc]">CANDIDATE</p><p className="mt-2 text-[11px] font-semibold text-[#bde4f8]">{activeSettings.programRev}</p></div>
+                  </div>
+
+                  <div className="mt-4"><QualificationDisposition tone={qualification.dispositionTone} label={qualification.disposition} /></div>
+                  <p className="mt-3 text-[9px] leading-5 text-[#7d8da2]">{qualification.rationale}</p>
+                  <p className="mt-3 rounded-lg border border-white/[0.055] bg-white/[0.02] px-3 py-2 text-[8px] text-[#64748a]">QUAL LOT · {qualification.qualificationLot}</p>
+                </div>
+
+                <div className="border-b border-white/[0.07] p-5 sm:p-6 xl:border-b-0 xl:border-r">
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-[8px] font-semibold tracking-[0.14em] text-[#66768c]">RELEASE GATES</p><p className="mt-1 text-[10px] text-[#9ba9bb]">품질 손실 없이 바뀌었는가</p></div><span className="text-[8px] text-[#607087]">SPEC LOCKED</span></div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {qualification.gates.map((gate) => <QualificationGate key={gate.label} {...gate} />)}
+                  </div>
+
+                  <div className="mt-5 border-t border-white/[0.06] pt-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[8px] font-semibold tracking-[0.14em] text-[#66768c]">SITE-TO-SITE YIELD MAP</p><p className="mt-1 text-[8px] text-[#5e6e84]">Mean {siteYieldMean.toFixed(2)}% · max |Δ| {maxSiteDeviation.toFixed(2)}%p</p></div><span className="text-[8px] text-[#607087]">8-SITE PARALLEL</span></div>
+                    <div className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+                      {qualification.siteYields.map((site) => <SiteYieldCell key={site.site} site={site.site} value={site.yield} deviation={Math.abs(site.yield - siteYieldMean)} />)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 sm:p-6">
+                  <div className="flex items-center gap-2"><Gauge className="size-4 text-[#31c7a2]" /><div><p className="text-[8px] font-semibold tracking-[0.14em] text-[#66768c]">PRODUCTIVITY PROOF</p><p className="mt-1 text-[10px] text-[#9ba9bb]">품질 기준을 지키며 빨라졌는가</p></div></div>
+                  <div className="mt-5 space-y-3">
+                    <QualificationImpact label="TEST TIME" before={`${qualification.baselineTestTime.toFixed(2)} sec`} after={`${qualification.candidateTestTime.toFixed(2)} sec`} delta={`−${testTimeImprovement.toFixed(1)}%`} />
+                    <QualificationImpact label="UPH" before={qualification.baselineUph.toLocaleString()} after={qualification.candidateUph.toLocaleString()} delta={`+${uphImprovement.toFixed(1)}%`} />
+                  </div>
+                  <div className="mt-4 rounded-xl border border-[#31c7a2]/14 bg-[#31c7a2]/[0.045] p-3.5"><p className="text-[8px] font-semibold tracking-[0.12em] text-[#69d8bb]">ENGINEERING RULE</p><p className="mt-2 text-[9px] leading-5 text-[#74899a]">속도가 좋아져도 correlation·false reject·site 편차 중 하나라도 깨지면 양산 release하지 않습니다.</p></div>
+                </div>
               </div>
             </Panel>
 
@@ -1614,6 +1664,26 @@ function CommandMetric({ label, value, detail, tone }: { label: string; value: s
 function CommandAction({ label, value, owner, sla, tone, onClick }: { label: string; value: string; owner: string; sla: string; tone: "good" | "warn" | "alert"; onClick: () => void }) {
   const toneClass = tone === "good" ? "bg-[#31c7a2]" : tone === "warn" ? "bg-[#f2b84b]" : "bg-[#f36b78]";
   return <button type="button" onClick={onClick} className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-white/[0.14] hover:bg-white/[0.04]"><span className={`size-1.5 shrink-0 rounded-full ${toneClass}`} /><span className="min-w-0 flex-1"><span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-[#617087]">{label}</span><span className="mt-1 block truncate text-[10px] font-medium text-[#d3deea]" title={value}>{value}</span><span className="mt-1 block text-[8px] text-[#66758b]">{owner}</span></span><span className="shrink-0 text-right"><span className="block text-[7px] font-semibold tracking-[0.08em] text-[#8b9aaf]">{sla}</span><ArrowRight className="ml-auto mt-2 size-3 text-[#4f5f75] transition group-hover:translate-x-0.5 group-hover:text-[#f2b84b]" /></span></button>;
+}
+
+function QualificationDisposition({ tone, label }: { tone: "good" | "warn" | "alert"; label: string }) {
+  const classes = tone === "good" ? "border-[#31c7a2]/25 bg-[#31c7a2]/10 text-[#68ddbf]" : tone === "alert" ? "border-[#f36b78]/25 bg-[#f36b78]/10 text-[#ff9aa3]" : "border-[#f2b84b]/25 bg-[#f2b84b]/10 text-[#ffd16b]";
+  return <span className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[9px] font-semibold tracking-[0.08em] ${classes}`}><span className={`size-1.5 rounded-full ${tone === "good" ? "bg-[#31c7a2]" : tone === "alert" ? "bg-[#f36b78]" : "bg-[#f2b84b]"}`} />{label}</span>;
+}
+
+function QualificationGate({ label, value, limit, state }: { label: string; value: string; limit: string; state: QualificationGateState }) {
+  const classes = state === "pass" ? "border-[#31c7a2]/15 bg-[#31c7a2]/[0.035]" : state === "fail" ? "border-[#f36b78]/18 bg-[#f36b78]/[0.045]" : "border-[#f2b84b]/18 bg-[#f2b84b]/[0.04]";
+  const text = state === "pass" ? "text-[#68ddbf]" : state === "fail" ? "text-[#ff9aa3]" : "text-[#ffd16b]";
+  return <div className={`rounded-xl border p-3 ${classes}`}><div className="flex items-center justify-between gap-2"><p className="text-[8px] text-[#718097]">{label}</p><span className={`text-[7px] font-semibold uppercase tracking-[0.1em] ${text}`}>{state}</span></div><p className={`mt-2 text-[13px] font-semibold tabular-nums ${text}`}>{value}</p><p className="mt-1 text-[8px] text-[#617087]">Limit {limit}</p></div>;
+}
+
+function SiteYieldCell({ site, value, deviation }: { site: string; value: number; deviation: number }) {
+  const classes = deviation > 0.25 ? "border-[#f36b78]/24 bg-[#f36b78]/[0.07] text-[#ff9aa3]" : deviation > 0.15 ? "border-[#f2b84b]/20 bg-[#f2b84b]/[0.055] text-[#ffd16b]" : "border-[#31c7a2]/15 bg-[#31c7a2]/[0.035] text-[#69ddc0]";
+  return <div className={`rounded-lg border px-1.5 py-2 text-center ${classes}`}><p className="text-[7px] font-semibold tracking-[0.08em] opacity-70">{site}</p><p className="mt-1 text-[9px] font-semibold tabular-nums">{value.toFixed(2)}</p></div>;
+}
+
+function QualificationImpact({ label, before, after, delta }: { label: string; before: string; after: string; delta: string }) {
+  return <div className="rounded-xl border border-white/[0.06] bg-[#08101d]/38 p-3.5"><div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold tracking-[0.11em] text-[#64738a]">{label}</span><span className="rounded-md bg-[#31c7a2]/10 px-2 py-1 text-[8px] font-semibold text-[#69ddc0]">{delta}</span></div><div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center"><span><span className="block text-[7px] text-[#59687e]">BASE</span><strong className="mt-1 block text-[11px] font-medium tabular-nums text-[#8f9eb1]">{before}</strong></span><ArrowRight className="size-3 text-[#46566c]" /><span><span className="block text-[7px] text-[#5d887f]">CANDIDATE</span><strong className="mt-1 block text-[11px] font-semibold tabular-nums text-[#b7e6d9]">{after}</strong></span></div></div>;
 }
 
 function StudioField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

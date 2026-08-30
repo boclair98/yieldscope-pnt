@@ -334,6 +334,27 @@ export type TestOperations = {
   handoff: Array<{ label: string; value: string; detail: string; tone: "good" | "warn" | "alert" }>;
 };
 
+export type QualificationGateState = "pass" | "watch" | "fail";
+
+export type TestProgramQualification = {
+  baselineRev: string;
+  qualificationLot: string;
+  disposition: string;
+  dispositionTone: "good" | "warn" | "alert";
+  rationale: string;
+  gates: Array<{
+    label: string;
+    value: string;
+    limit: string;
+    state: QualificationGateState;
+  }>;
+  baselineTestTime: number;
+  candidateTestTime: number;
+  baselineUph: number;
+  candidateUph: number;
+  siteYields: Array<{ site: string; yield: number }>;
+};
+
 export type DispositionAction = "hold" | "release" | "fa";
 
 export type LotDisposition = {
@@ -398,6 +419,72 @@ export const TEST_CONTROL_PLANS: Record<ScenarioKey, TestControlPlan> = {
       { label: "SAM correlation", value: "B55 ↔ delam", state: "watch" },
       { label: "Cross-section", value: "4 / 5 confirmed", state: "pass" },
       { label: "Material release", value: "MUF-24B hold", state: "pending" },
+    ],
+  },
+};
+
+export const TEST_PROGRAM_QUALIFICATIONS: Record<ScenarioKey, TestProgramQualification> = {
+  stacker: {
+    baselineRev: "FT-M8-041",
+    qualificationLot: "Q-M8-0817 · 12,480 pcs",
+    disposition: "PROGRAM PASS · PRODUCT HOLD",
+    dispositionTone: "warn",
+    rationale: "Program delta는 손실 원인에서 제외했습니다. Candidate rev는 유지하고 Package 증거가 닫힐 때까지 제품 투입만 보류합니다.",
+    gates: [
+      { label: "Golden correlation", value: "99.82%", limit: "≥ 99.70%", state: "pass" },
+      { label: "False reject Δ", value: "+0.04%p", limit: "≤ 0.10%p", state: "pass" },
+      { label: "Guardband coverage", value: "6.2σ", limit: "≥ 6.0σ", state: "pass" },
+      { label: "Multisite max Δ", value: "0.19%p", limit: "≤ 0.25%p", state: "pass" },
+    ],
+    baselineTestTime: 2.46,
+    candidateTestTime: 2.18,
+    baselineUph: 1460,
+    candidateUph: 1650,
+    siteYields: [
+      { site: "S1", yield: 98.12 }, { site: "S2", yield: 98.06 }, { site: "S3", yield: 98.18 }, { site: "S4", yield: 98.02 },
+      { site: "S5", yield: 98.15 }, { site: "S6", yield: 98.08 }, { site: "S7", yield: 97.99 }, { site: "S8", yield: 98.10 },
+    ],
+  },
+  socket: {
+    baselineRev: "FT-HBM-117",
+    qualificationLot: "Q-HBM-0803 · 10,240 pcs",
+    disposition: "HOLD · SOCKET RE-QUAL",
+    dispositionTone: "alert",
+    rationale: "Candidate test time은 개선됐지만 S7 site 편차와 false reject가 기준을 초과했습니다. Socket 교체 후 correlation을 다시 잠급니다.",
+    gates: [
+      { label: "Golden correlation", value: "98.91%", limit: "≥ 99.70%", state: "fail" },
+      { label: "False reject Δ", value: "+0.76%p", limit: "≤ 0.10%p", state: "fail" },
+      { label: "Guardband coverage", value: "6.1σ", limit: "≥ 6.0σ", state: "pass" },
+      { label: "Multisite max Δ", value: "1.42%p", limit: "≤ 0.25%p", state: "fail" },
+    ],
+    baselineTestTime: 2.12,
+    candidateTestTime: 1.94,
+    baselineUph: 1700,
+    candidateUph: 1860,
+    siteYields: [
+      { site: "S1", yield: 97.61 }, { site: "S2", yield: 97.55 }, { site: "S3", yield: 97.67 }, { site: "S4", yield: 97.51 },
+      { site: "S5", yield: 97.58 }, { site: "S6", yield: 97.62 }, { site: "S7", yield: 96.25 }, { site: "S8", yield: 97.54 },
+    ],
+  },
+  muf: {
+    baselineRev: "FT-M12-204",
+    qualificationLot: "Q-M12-0701 · 11,520 pcs",
+    disposition: "PROGRAM PASS · MATERIAL HOLD",
+    dispositionTone: "warn",
+    rationale: "전기 Test program은 release 기준을 충족했습니다. MUF-24B material과 Package reliability 승인만 별도 hold로 유지합니다.",
+    gates: [
+      { label: "Golden correlation", value: "99.74%", limit: "≥ 99.70%", state: "pass" },
+      { label: "False reject Δ", value: "+0.08%p", limit: "≤ 0.10%p", state: "pass" },
+      { label: "Guardband coverage", value: "6.0σ", limit: "≥ 6.0σ", state: "pass" },
+      { label: "Multisite max Δ", value: "0.23%p", limit: "≤ 0.25%p", state: "watch" },
+    ],
+    baselineTestTime: 2.27,
+    candidateTestTime: 2.06,
+    baselineUph: 1590,
+    candidateUph: 1750,
+    siteYields: [
+      { site: "S1", yield: 98.71 }, { site: "S2", yield: 98.66 }, { site: "S3", yield: 98.74 }, { site: "S4", yield: 98.62 },
+      { site: "S5", yield: 98.69 }, { site: "S6", yield: 98.57 }, { site: "S7", yield: 98.80 }, { site: "S8", yield: 98.64 },
     ],
   },
 };
