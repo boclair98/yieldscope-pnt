@@ -592,6 +592,21 @@ export function YieldDashboard() {
     return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
   }, [activeSettings.dppmLimit, activeSettings.targetYield, activeStage, configuredTrend, controlPlan, operations]);
 
+  const commandCenter = useMemo(() => {
+    const attentionLots = activeLots.filter((lot) => lot.status !== "해제");
+    const exposureUnits = attentionLots.reduce((sum, lot) => sum + lot.units, 0);
+    const yieldGap = activeSettings.latestYield - activeSettings.targetYield;
+    const dppmGap = activeStage.dppm - activeSettings.dppmLimit;
+    const testabilityFirst = activeStage.retestRecovery >= activeSettings.retestTarget;
+    const currentLoopStep = releaseReadiness.status === "GO" ? 4 : releaseReadiness.status === "CONDITIONAL" ? 3 : 2;
+    const decisionStatement = releaseReadiness.status === "GO"
+      ? "필수 Gate와 Flow가 닫혔습니다. 다음 LOT의 Golden sample과 TAT를 감시하며 투입합니다."
+      : releaseReadiness.status === "HOLD"
+        ? "Blocker가 남아 있습니다. 영향 LOT를 격리하고 재현·상관성 확인 전에는 투입하지 않습니다."
+        : "조건부 투입입니다. Watch 항목의 Owner와 Exit criteria를 다음 교대까지 잠급니다.";
+    return { attentionLots: attentionLots.length, exposureUnits, yieldGap, dppmGap, testabilityFirst, currentLoopStep, decisionStatement };
+  }, [activeLots, activeSettings.dppmLimit, activeSettings.latestYield, activeSettings.retestTarget, activeSettings.targetYield, activeStage.dppm, activeStage.retestRecovery, releaseReadiness.status]);
+
   const lens = ROLE_LENSES[roleLens];
   const decisionBrief = useMemo(() => {
     const signal = roleLens === "test"
@@ -882,6 +897,87 @@ export function YieldDashboard() {
                 return <button key={key} type="button" onClick={() => selectScenario(key)} className={`shrink-0 rounded-full border px-3 py-2 text-[11px] ${key === scenarioKey ? "border-[#f2b84b]/40 bg-[#f2b84b]/10 text-[#ffd16b]" : "border-white/[0.08] text-[#8593a8]"}`}>{item.shortLabel}</button>;
               })}
             </div>
+
+            <article className="relative mt-7 overflow-hidden rounded-[22px] border border-[#f2b84b]/20 bg-[#0b1422] shadow-[0_26px_90px_rgba(0,0,0,0.28)]">
+              <div className="pointer-events-none absolute -right-24 -top-28 size-80 rounded-full bg-[#f2b84b]/[0.055] blur-3xl" />
+              <div className="pointer-events-none absolute bottom-0 left-1/3 size-64 rounded-full bg-[#31c7a2]/[0.045] blur-3xl" />
+
+              <div className="relative flex flex-col gap-3 border-b border-white/[0.07] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex items-center gap-3">
+                  <span className="relative grid size-9 place-items-center rounded-xl border border-[#f2b84b]/25 bg-[#f2b84b]/10 text-[#f2b84b]">
+                    <Network className="size-4" />
+                    <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full border-2 border-[#0b1422] bg-[#31c7a2]" />
+                  </span>
+                  <div>
+                    <p className="text-[9px] font-semibold tracking-[0.18em] text-[#f2b84b]">P&amp;T SHIFT COMMAND CENTER</p>
+                    <p className="mt-1 text-[10px] text-[#6f7f95]">Release · Loss · Exposure · Owner · SLA</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[8px] font-medium tracking-[0.08em] text-[#7d8ca1]">
+                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5">{activeSettings.programRev}</span>
+                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5">{activeSettings.window}</span>
+                  <span className={`rounded-lg border px-2.5 py-1.5 ${customLots[scenarioKey] ? "border-[#55b8f6]/20 bg-[#55b8f6]/[0.07] text-[#a9dcf6]" : "border-[#31c7a2]/20 bg-[#31c7a2]/[0.06] text-[#77d8bf]"}`}>{customLots[scenarioKey] ? "USER LOT DATA" : "SYNTHETIC BASELINE"}</span>
+                </div>
+              </div>
+
+              <div className="relative grid xl:grid-cols-[minmax(0,1.16fr)_minmax(330px,0.92fr)] 2xl:grid-cols-[minmax(0,1.18fr)_minmax(330px,0.82fr)_minmax(300px,0.78fr)]">
+                <section className="border-b border-white/[0.07] p-5 sm:p-6 xl:border-b-0 xl:border-r" aria-labelledby="shift-decision-title">
+                  <div className="flex items-start justify-between gap-5">
+                    <div>
+                      <p className="text-[8px] font-semibold tracking-[0.15em] text-[#6f7f95]">SHIFT DECISION</p>
+                      <h2 id="shift-decision-title" className={`mt-2 text-[29px] font-semibold tracking-[-0.045em] ${releaseStatusStyle[releaseReadiness.status].text}`}>{releaseReadiness.status}</h2>
+                      <p className="mt-3 max-w-xl text-[12px] font-medium leading-6 text-[#d4deea]">{commandCenter.decisionStatement}</p>
+                    </div>
+                    <div className="grid size-[76px] shrink-0 place-items-center rounded-full p-[6px]" style={{ background: `conic-gradient(${releaseReadiness.status === "GO" ? "#31c7a2" : releaseReadiness.status === "HOLD" ? "#f36b78" : "#f2b84b"} ${releaseReadiness.score}%, rgba(255,255,255,0.07) 0)` }} aria-label={`Release readiness ${releaseReadiness.score}%`}>
+                      <span className="grid size-full place-items-center rounded-full bg-[#0b1422] text-center"><span><strong className="block text-lg font-semibold tabular-nums text-[#edf3fc]">{releaseReadiness.score}</strong><span className="block text-[7px] tracking-[0.12em] text-[#69788e]">READINESS</span></span></span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+                    <div className="flex items-center gap-2 text-[8px] font-semibold tracking-[0.13em] text-[#75849a]"><Zap className="size-3 text-[#f2b84b]" /> NEXT REQUIRED CHECK</div>
+                    <p className="mt-2 text-[11px] leading-5 text-[#c6d2df]">{releaseReadiness.nextAction}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => scrollTo("test-ops")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#f2b84b] px-3 py-2 text-[9px] font-semibold text-[#181208] transition hover:bg-[#ffd16b]">Test 조건 확인 <ArrowRight className="size-3" /></button>
+                      <button type="button" onClick={() => scrollTo("rca")} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.035] px-3 py-2 text-[9px] font-medium text-[#aab8c9] transition hover:border-white/20 hover:text-white">FA 근거 보기</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="border-b border-white/[0.07] p-5 sm:p-6 2xl:border-b-0 2xl:border-r" aria-labelledby="loss-exposure-title">
+                  <div className="flex items-center justify-between gap-3">
+                    <div><p className="text-[8px] font-semibold tracking-[0.15em] text-[#6f7f95]">LOSS &amp; EXPOSURE</p><h2 id="loss-exposure-title" className="mt-1.5 text-[13px] font-semibold text-[#dce5ef]">손실 규모와 원인 방향</h2></div>
+                    <span className="rounded-lg border border-[#f36b78]/18 bg-[#f36b78]/[0.06] px-2 py-1 text-[8px] font-medium text-[#ff9aa3]">{commandCenter.attentionLots} LOT ATTENTION</span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <CommandMetric label="YIELD GAP" value={`${commandCenter.yieldGap >= 0 ? "+" : ""}${commandCenter.yieldGap.toFixed(2)}%p`} detail={`Target ${activeSettings.targetYield.toFixed(2)}%`} tone={commandCenter.yieldGap >= 0 ? "good" : "alert"} />
+                    <CommandMetric label="DPPM GAP" value={`${commandCenter.dppmGap > 0 ? "+" : ""}${commandCenter.dppmGap.toLocaleString()}`} detail={`Limit ${activeSettings.dppmLimit.toLocaleString()}`} tone={commandCenter.dppmGap <= 0 ? "good" : "alert"} />
+                    <CommandMetric label="EXPOSED UNITS" value={commandCenter.exposureUnits.toLocaleString()} detail={`${commandCenter.attentionLots} lots · 미해제`} tone={commandCenter.exposureUnits > 0 ? "warn" : "good"} />
+                    <CommandMetric label="RETEST BRANCH" value={commandCenter.testabilityFirst ? "TESTABILITY" : "PRODUCT / PKG"} detail={`${activeStage.retestRecovery}% recovery · 기준 ${activeSettings.retestTarget}%`} tone={commandCenter.testabilityFirst ? "warn" : "neutral"} />
+                  </div>
+                  <p className="mt-3 text-[8px] leading-4 text-[#59697f]">Retest branch는 원인 확정이 아니라 교차 tester/socket 또는 Package FA의 선확인 방향입니다.</p>
+                </section>
+
+                <section className="p-5 sm:p-6 xl:col-span-2 2xl:col-span-1" aria-labelledby="action-queue-title">
+                  <div className="flex items-center justify-between gap-3"><div><p className="text-[8px] font-semibold tracking-[0.15em] text-[#6f7f95]">NEXT 120 MINUTES</p><h2 id="action-queue-title" className="mt-1.5 text-[13px] font-semibold text-[#dce5ef]">Owner가 보이는 Action queue</h2></div><Timer className="size-4 text-[#31c7a2]" /></div>
+                  <div className="mt-4 space-y-2">
+                    {operations.handoff.map((item, index) => (
+                      <CommandAction key={item.label} label={item.label} value={item.value} owner={index === 0 ? "Shift Leader" : index === 1 ? "Test QE" : "MFG / PE"} sla={index === 0 ? "NOW" : index === 1 ? "+60 MIN" : "+120 MIN"} tone={item.tone} onClick={() => scrollTo(index === 0 ? "defects" : index === 1 ? "test-ops" : "validation")} />
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <div className="relative flex flex-col gap-4 border-t border-white/[0.07] bg-[#07101c]/55 px-5 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 xl:pb-0" aria-label="품질 Control loop">
+                  {(["Detect", "Contain", "Reproduce", "Decide", "Verify"] as const).map((step, index) => {
+                    const complete = index < commandCenter.currentLoopStep;
+                    const active = index === commandCenter.currentLoopStep;
+                    return <div key={step} className="flex shrink-0 items-center gap-2"><span className={`grid size-6 place-items-center rounded-full border text-[8px] font-semibold ${complete ? "border-[#31c7a2]/30 bg-[#31c7a2]/10 text-[#6de0c2]" : active ? "border-[#f2b84b]/40 bg-[#f2b84b]/10 text-[#ffd16b]" : "border-white/[0.08] bg-white/[0.025] text-[#5b6a80]"}`}>{complete ? <Check className="size-3" /> : index + 1}</span><span className={`text-[8px] font-medium uppercase tracking-[0.08em] ${active ? "text-[#e6bd68]" : complete ? "text-[#829f9b]" : "text-[#526177]"}`}>{step}</span>{index < 4 && <ArrowRight className="size-3 text-[#35445a]" />}</div>;
+                  })}
+                </div>
+                <p className="shrink-0 text-[8px] text-[#59697f]">ACTIVE CASE · <span className="font-medium text-[#91a0b4]">{activeSettings.caseLabel}</span></p>
+              </div>
+            </article>
 
             <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {scenario.kpis.map((kpi) => (
@@ -1507,6 +1603,16 @@ function requiresSignIn(response: Response) {
 
 function PlanMeta({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-white/[0.06] bg-white/[0.018] px-3 py-2"><p className="text-[7px] font-semibold tracking-[0.1em] text-[#617087]">{label}</p><p className="mt-1 text-[9px] font-medium text-[#cbd6e3]">{value}</p></div>;
+}
+
+function CommandMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "good" | "warn" | "alert" | "neutral" }) {
+  const toneClass = tone === "good" ? "text-[#68ddbf]" : tone === "warn" ? "text-[#ffd16b]" : tone === "alert" ? "text-[#ff9aa3]" : "text-[#d6dfeb]";
+  return <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.022] p-3"><p className="text-[7px] font-semibold tracking-[0.11em] text-[#617087]">{label}</p><p className={`mt-2 truncate text-[13px] font-semibold tracking-[-0.02em] tabular-nums ${toneClass}`} title={value}>{value}</p><p className="mt-1 truncate text-[8px] text-[#65748a]" title={detail}>{detail}</p></div>;
+}
+
+function CommandAction({ label, value, owner, sla, tone, onClick }: { label: string; value: string; owner: string; sla: string; tone: "good" | "warn" | "alert"; onClick: () => void }) {
+  const toneClass = tone === "good" ? "bg-[#31c7a2]" : tone === "warn" ? "bg-[#f2b84b]" : "bg-[#f36b78]";
+  return <button type="button" onClick={onClick} className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left transition hover:border-white/[0.14] hover:bg-white/[0.04]"><span className={`size-1.5 shrink-0 rounded-full ${toneClass}`} /><span className="min-w-0 flex-1"><span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-[#617087]">{label}</span><span className="mt-1 block truncate text-[10px] font-medium text-[#d3deea]" title={value}>{value}</span><span className="mt-1 block text-[8px] text-[#66758b]">{owner}</span></span><span className="shrink-0 text-right"><span className="block text-[7px] font-semibold tracking-[0.08em] text-[#8b9aaf]">{sla}</span><ArrowRight className="ml-auto mt-2 size-3 text-[#4f5f75] transition group-hover:translate-x-0.5 group-hover:text-[#f2b84b]" /></span></button>;
 }
 
 function StudioField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

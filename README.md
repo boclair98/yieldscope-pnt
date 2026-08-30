@@ -93,11 +93,23 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 ## 주요 기능
 
-### 0. P&T Decision Brief
+### 0. Shift Command Center
+
+첫 화면에서 분석 차트를 열기 전에 `Release · Loss · Exposure · Owner · SLA`를 한 번에 판단합니다.
+
+- `GO / CONDITIONAL / HOLD`와 readiness 점수, 다음 필수 확인 항목을 한 문장으로 제시합니다.
+- Yield gap, DPPM gap, 미해제 LOT·노출 수량을 기준값과 함께 표시합니다.
+- Retest recovery 기준에 따라 `Testability 선확인`과 `Product / Package FA 선확인` 방향을 분리합니다.
+- Containment → Next check → Exit criteria를 `NOW / +60분 / +120분` Action queue로 배치합니다.
+- `Detect → Contain → Reproduce → Decide → Verify` Control loop에서 현재 단계와 다음 근거 화면을 연결합니다.
+
+이 UI는 단순 모니터링보다 **교대 시작 시 무엇을 멈추고, 누가 확인하며, 어떤 기준으로 다시 투입할지**를 빠르게 합의하는 데 초점을 맞췄습니다.
+
+### 0-1. P&T Decision Brief
 
 화면 상단에서 `P&T Test / Quality·QE / Manufacturing` 관점을 전환하면 같은 Case를 역할별 의사결정 순서로 재정렬합니다. `현재 신호 → 지금 결정 → 다음 담당자`를 한 줄로 읽고, 해당 업무 화면으로 바로 이동할 수 있어 교대 리뷰와 면접 데모에서 핵심 판단을 빠르게 설명할 수 있습니다.
 
-### 0-1. Data Studio — Case 설정·공유
+### 0-2. Data Studio — Case 설정·공유
 
 고정 문구와 기준값을 코드에 직접 수정하지 않고, `데이터 설정` 패널에서 팀이 Case를 직접 구성할 수 있습니다.
 
