@@ -814,7 +814,7 @@ export function YieldDashboard() {
             >
               <Settings2 className="size-3.5" /> 데이터 설정
             </button>
-            <span aria-label="100% 합성 데이터" className="shrink-0 whitespace-nowrap rounded-full border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1.5 text-[10px] font-medium text-[#6ee0c3]"><span className="sm:hidden">DEMO</span><span className="hidden sm:inline">100% 합성 데이터</span></span>
+            <span aria-label="100% 합성 데이터" className="shrink-0 whitespace-nowrap rounded-full border border-[#31c7a2]/20 bg-[#31c7a2]/10 px-2.5 py-1.5 text-[10px] font-medium text-[#6ee0c3]"><span className="lg:hidden">DEMO</span><span className="hidden lg:inline">100% 합성 데이터</span></span>
           </div>
         </div>
 
