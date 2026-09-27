@@ -300,6 +300,16 @@ postgresql+asyncpg://app:app@localhost:5432/app
 
 로컬에서는 `DEV_FAKE_USER`를 사용해 개발용 인증 사용자를 고정할 수 있습니다. 운영에서는 coders.kr native identity만 사용합니다.
 
+### 환경 변수
+
+| 이름 | 용도 | 필수 여부 | 값의 출처 |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | FastAPI의 PostgreSQL 연결 | 로컬 DB 사용 시 필수 · 운영에서는 자동 주입 | 로컬 PostgreSQL/Compose 설정 또는 `coders.yaml`의 db 서비스 참조 |
+| `DEV_FAKE_USER` | 플랫폼 인증 없이 로컬 API를 시험할 UUID | 선택 · 운영 설정 금지 | 로컬에서 생성한 테스트 UUID (`backend/.env.example` 참고) |
+| `BACKEND_URL` | 정적 웹 nginx가 API 서비스로 프록시할 내부 주소 | 운영에서 자동 주입 | `coders.yaml`의 `${api.internal_url}` |
+
+`.env`와 `.coders/token`은 Git에서 제외합니다. 실제 인증값은 README나 커밋에 넣지 않습니다. 이 데모는 외부 제조 API 키가 필요하지 않으며, MES·TMS·Tester·FA·Databook 연동은 구현되지 않았습니다.
+
 ## 테스트와 검증
 
 ```bash
@@ -346,6 +356,16 @@ coders.kr deployment
 
 공개 운영 주소: [https://yieldscope-pnt.coders.kr](https://yieldscope-pnt.coders.kr)
 
+### 저장소와 재배포 순서
+
+1. 정본은 [`boclair98/yieldscope-pnt`](https://github.com/boclair98/yieldscope-pnt)의 `main`입니다. [`coders-kr/yieldscope-pnt`](https://github.com/coders-kr/yieldscope-pnt)는 정본에서 생성한 실제 GitHub 포크이며, 개발과 배포의 소스가 아닙니다.
+2. 로컬에서 테스트·빌드하고 민감정보 및 변경 파일을 확인한 뒤 정본에 먼저 커밋·푸시합니다.
+3. GitHub의 **Sync fork** 또는 권한이 있는 CLI의 `gh repo sync coders-kr/yieldscope-pnt -b main`으로 포크를 동기화합니다. 두 저장소 `main`의 전체 SHA가 같아야 합니다.
+4. [coders.kr 배포 지침](https://coders.kr/llms.txt)의 최신 내용을 확인하고 기존 `yieldscope-pnt` 프로젝트를 정본 저장소 URL로 재배포합니다. 에이전트 API를 쓸 경우 `POST /v1/agent/deploys`에 `repo=https://github.com/boclair98/yieldscope-pnt`, `name=yieldscope-pnt`를 전달하고 `GET /v1/agent/projects/yieldscope-pnt`에서 terminal status를 확인합니다. 토큰은 승인된 로컬 저장소 또는 환경 변수에서만 읽습니다.
+5. `ready` 후 운영 `/`, `/api/health`, 주요 화면과 360·390·768·1440px 레이아웃을 확인합니다. API 요청 성공만으로 배포 완료를 선언하지 않습니다.
+
+패키지 Test Matrix의 실행 컨텍스트·검사항목은 브라우저에만 저장되므로 계정 간 공유, 승인 이력, 접근 권한이 필요한 운영 워크플로에 사용할 수 없습니다. 제조 식별자나 고객 자료를 공개 데모에 입력하지 마세요.
+
 ## 공개 기술 참고
 
 - [SK hynix — P&T 직무 인터뷰](https://talent.skhynix.com/hub/en/job/interview/8)
@@ -369,5 +389,7 @@ coders.kr deployment
 ## 라이선스 및 고지
 
 Portfolio demonstration project입니다. 화면의 수치·장비명·LOT ID·임계값은 평가와 학습을 위한 합성 값입니다.
+
+현재 저장소에는 별도 오픈소스 라이선스가 명시되어 있지 않습니다. 사용·재배포 권한은 저장소 소유자에게 문의하세요.
 
 이 프로젝트는 SK hynix의 내부 시스템, 사양, 데이터, 공식 제품 또는 공식 제휴를 나타내지 않습니다. 실제 생산·출하 판단에 사용하려면 조직의 품질 승인, 데이터 계약, 보안 검토와 시스템 연동이 선행되어야 합니다.
