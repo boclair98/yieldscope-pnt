@@ -309,7 +309,7 @@ function RunContextEditor({
         <div>
           <p className="text-[8px] font-semibold tracking-[0.12em] text-[#64758d]">RUN TRACEABILITY</p>
           <h3 className="mt-1 text-[12px] font-semibold text-[#dce5ef]">제품·LOT·Program 연결</h3>
-          <p className="mt-1 text-[9px] leading-5 text-[#7c8ba0]">{profile.label}의 실행 정보를 입력합니다. 양산과 qualification은 서로 다른 식별 필드를 요구하며, 빈 항목이 남으면 해당 lane은 READY가 되지 않습니다.</p>
+          <p className="mt-1 text-[9px] leading-5 text-[#7c8ba0]">{profile.label}의 실행 정보를 입력합니다. 양산과 qualification은 서로 다른 식별 필드를 요구하며, 빈 항목이 남으면 해당 lane의 입력 계획은 완료되지 않습니다.</p>
         </div>
         <span className="shrink-0 rounded-lg border border-[#55b8f6]/15 bg-[#55b8f6]/[0.04] px-2.5 py-1.5 text-[8px] text-[#9bcfea]">저장 범위: 이 브라우저</span>
       </div>
@@ -565,7 +565,7 @@ export function PackageTestControl() {
             <p className="mt-3 rounded-lg border border-[#f2b84b]/12 bg-[#f2b84b]/[0.035] px-3 py-2 text-[8px] leading-5 text-[#a8956f]">경계 · {profile.boundary}</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <SummaryTile icon={<Check className="size-3.5" />} label="PRODUCTION GATES" value={`${productionComplete} / ${productionChecks.length}`} state={productionFailed ? "fail" : productionReady ? "pass" : "watch"} status={productionFailed ? "HOLD" : productionReady ? "READY" : productionTrace.ready ? "EVIDENCE REQUIRED" : "TRACE REQUIRED"} />
+            <SummaryTile icon={<Check className="size-3.5" />} label="PRODUCTION GATES" value={`${productionComplete} / ${productionChecks.length}`} state={productionFailed ? "fail" : productionReady ? "pass" : "watch"} status={productionFailed ? "REVIEW HOLD" : productionReady ? "PLAN COMPLETE" : productionTrace.ready ? "EVIDENCE REQUIRED" : "TRACE REQUIRED"} />
             <SummaryTile icon={<CircleDashed className="size-3.5" />} label="QUALIFICATION" value={`${qualificationComplete} / ${qualificationChecks.length}`} state={qualificationFailed ? "fail" : qualificationClosed ? "pass" : "watch"} status={qualificationFailed ? "ISSUE" : qualificationClosed ? "CLOSED" : qualificationTrace.ready ? "EVIDENCE REQUIRED" : "TRACE REQUIRED"} />
           </div>
         </div>

@@ -803,7 +803,7 @@ export function YieldDashboard() {
             <button
               type="button"
               onClick={() => window.print()}
-              className="hidden h-9 items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3.5 text-[11px] font-medium text-[#b8c4d4] transition hover:border-white/20 hover:text-white sm:flex"
+              className="hidden h-9 items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3.5 text-[11px] font-medium text-[#b8c4d4] transition hover:border-white/20 hover:text-white lg:flex"
             >
               <FileText className="size-3.5" /> 분석 리포트
             </button>
