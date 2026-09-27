@@ -10,6 +10,7 @@ export type PackageCheck = {
   format: string;
   purpose: string;
   required: boolean;
+  custom?: boolean;
   demo: { status: PackageCheckStatus; result: string; evidence: string };
 };
 
@@ -32,6 +33,19 @@ export type PackageCheckRecord = {
 export type PackagePlanState = {
   profile: PackageProfileKey;
   records: Partial<Record<string, PackageCheckRecord>>;
+  contexts?: Partial<Record<PackageProfileKey, PackageRunContext>>;
+  customChecks?: Partial<Record<PackageProfileKey, PackageCheck[]>>;
+};
+
+export type PackageRunContext = {
+  product: string;
+  packageRevision: string;
+  lotId: string;
+  programRevision: string;
+  specRevision: string;
+  qualificationId: string;
+  qualificationPlanRevision: string;
+  owner: string;
 };
 
 export const PACKAGE_PLAN_STORAGE_KEY = "yieldscope.package-test-plan.v1";
@@ -106,5 +120,18 @@ export const PACKAGE_PROFILES: PackageProfile[] = [
 ];
 
 export function createEmptyPackagePlan(): PackagePlanState {
-  return { profile: "hbm-stack", records: {} };
+  return { profile: "hbm-stack", records: {}, contexts: {}, customChecks: {} };
+}
+
+export function createEmptyPackageRunContext(): PackageRunContext {
+  return {
+    product: "",
+    packageRevision: "",
+    lotId: "",
+    programRevision: "",
+    specRevision: "",
+    qualificationId: "",
+    qualificationPlanRevision: "",
+    owner: "",
+  };
 }

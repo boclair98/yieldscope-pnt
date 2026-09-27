@@ -72,3 +72,21 @@ button {
 .studio-input::placeholder {
   color: #5f6e84;
 }
+
+/* Keep engineering labels readable on a laptop and phone. */
+.yield-dashboard :is([class~="text-[7px]"], [class~="text-[8px]"], [class~="text-[9px]"]) {
+  font-size: 0.75rem;
+}
+
+.yield-dashboard [class~="text-[10px]"] {
+  font-size: 0.8125rem;
+}
+
+.package-test-control :is(button, input, select) {
+  min-height: 44px;
+}
+
+.package-test-control :is(h2, h3, h4, p, span, li) {
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}

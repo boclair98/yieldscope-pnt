@@ -748,7 +748,7 @@ export function YieldDashboard() {
   }
 
   return (
-    <div className="min-h-screen text-[#edf3fc]">
+    <div className="yield-dashboard min-h-screen text-[#edf3fc]">
       <a
         href="#main-content"
         className="fixed left-4 top-3 z-[100] -translate-y-20 rounded-lg bg-[#f2b84b] px-4 py-2 text-sm font-semibold text-[#17110a] focus:translate-y-0"
@@ -1328,8 +1328,8 @@ export function YieldDashboard() {
 
           <section id="defects" className="scroll-mt-24 pt-10">
             <SectionHeader number="03" title="Defect Explorer" description="불량 구성과 장비 집중도를 함께 보며 손실의 80%를 만드는 구간부터 좁힙니다." />
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-              <Panel className="p-5 sm:p-6">
+            <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+              <Panel className="min-w-0 p-5 sm:p-6">
                 <PanelHeading eyebrow="DEFECT OCCURRENCES" title="불량 Pareto" description="결함 발생 건수 기준 · 불량품 수와 중복될 수 있음" action={<span className="text-[10px] text-[#6d7c92]">총 {configuredPareto.reduce((sum, item) => sum + item.count, 0).toLocaleString()}건</span>} />
                 <div className="mt-6 space-y-3">
                   {configuredPareto.map((item, index) => {
@@ -1349,14 +1349,14 @@ export function YieldDashboard() {
                 </div>
               </Panel>
 
-              <Panel className="p-5 sm:p-6">
+              <Panel className="min-w-0 p-5 sm:p-6">
                 <PanelHeading eyebrow="STRATIFIED RISK" title="공정 · 장비 집중도" description={`${configuredPareto.find((item) => item.code === selectedDefect)?.label ?? "전체"} 기준 층화 비교`} action={<span className="rounded-lg bg-white/[0.04] px-2 py-1 text-[9px] text-[#8492a6]">RR = Risk ratio</span>} />
-                <div className="mt-6 overflow-hidden rounded-xl border border-white/[0.06]">
-                  <div className="grid grid-cols-[minmax(90px,1fr)_74px_64px_66px] gap-2 bg-white/[0.025] px-3 py-2.5 text-[8px] font-semibold tracking-[0.1em] text-[#59687e]">
+                <div className="mt-6 overflow-x-auto rounded-xl border border-white/[0.06]">
+                  <div className="grid min-w-[340px] grid-cols-[minmax(90px,1fr)_74px_64px_66px] gap-2 bg-white/[0.025] px-3 py-2.5 text-[8px] font-semibold tracking-[0.1em] text-[#59687e]">
                     <span>TOOL / STAGE</span><span className="text-right">DEFECT %</span><span className="text-right">RR</span><span className="text-right">STATE</span>
                   </div>
                   {scenario.tools.map((tool) => (
-                    <div key={tool.name} className="grid grid-cols-[minmax(90px,1fr)_74px_64px_66px] items-center gap-2 border-t border-white/[0.05] px-3 py-3 text-[10px] hover:bg-white/[0.02]">
+                    <div key={tool.name} className="grid min-w-[340px] grid-cols-[minmax(90px,1fr)_74px_64px_66px] items-center gap-2 border-t border-white/[0.05] px-3 py-3 text-[10px] hover:bg-white/[0.02]">
                       <span><strong className="block text-[11px] font-medium text-[#ced8e5]">{tool.name}</strong><span className="text-[8px] text-[#5f6e84]">{tool.stage}</span></span>
                       <span className="text-right tabular-nums text-[#a6b3c4]">{tool.rate.toFixed(2)}</span>
                       <span className={`text-right font-semibold tabular-nums ${tool.risk >= 3 ? "text-[#ff8d98]" : tool.risk >= 1.2 ? "text-[#ffb36f]" : "text-[#68dcc0]"}`}>{tool.risk.toFixed(1)}×</span>

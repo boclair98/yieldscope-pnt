@@ -144,9 +144,12 @@ Baseline과 Candidate program을 같은 qualification LOT에서 비교해 변경
 | UTV · WLP / LAR | wafer map → WLP 전기 검사 → 구조에 맞는 외관/X-ray/SAM → test vehicle 및 look-ahead reliability |
 
 - 각 항목에 `미실행 / PASS / WATCH / FAIL / N/A`, 결과·표본 수, 기준 출처 또는 증거 ID를 기록할 수 있습니다.
-- 필수 생산 gate는 결과와 증거 ID가 모두 있어야 `READY`입니다. FAIL은 `HOLD`로 표시합니다. Reliability qualification은 별도 표본 계획으로 `QUAL OPEN / QUALIFIED`를 산출합니다.
+- 실행 추적정보에 제품/P/N, package revision, LOT/run ID, test program revision, Databook/spec revision, qualification ID·계획 개정 및 담당 조직 별칭을 기록합니다. 양산 lane은 제품·package·LOT·program·spec·담당자 식별자를, qualification lane은 제품·package·qual ID·계획 개정·spec·담당자 식별자를 각각 요구합니다.
+- 필수 gate 결과와 증거 ID, lane별 추적정보가 모두 있어야 `READY` 또는 `QUALIFIED`로 닫힙니다. FAIL은 양산 `HOLD`, qualification `ISSUE`로 표시합니다. 현재 실행값 초기화는 해당 프로파일의 결과·추적정보만 비우고 사용자 정의 항목은 보존합니다.
+- Engineering Review 카드가 FAIL, 누락된 제품·LOT·Program·Qual 식별자, 필수 검사 결과·증거의 누락을 양산/qualification 별로 우선순위에 따라 보여줍니다. 화면의 `READY`는 입력 완결성 표시이며 실제 출하 승인이나 규격 적합성 검증 결과가 아닙니다.
+- 팀별 검사 항목을 양산 또는 qualification lane에 추가하고, stage·측정 형식·목적·필수 gate 여부를 정의할 수 있습니다. 사용자 정의 항목 제거 시 연결된 결과도 함께 삭제하며 확인을 받습니다. 팀 항목은 승인된 recipe가 아니므로 해당 조직의 기준·승인을 별도로 확인해야 합니다.
 - 예시 결과 불러오기 기능은 명시적으로 합성 샘플을 채우며 실제 SK hynix 생산 데이터가 아닙니다.
-- 선택한 프로파일은 브라우저 localStorage에 저장하고 CSV로 내보낼 수 있습니다. 다른 사용자와 공유하거나 서버에 저장하려면 별도 승인·인증 API 연결이 필요합니다.
+- 실행 컨텍스트, 사용자 정의 항목, 결과는 현재 브라우저의 localStorage에 저장하며 CSV 내보내기에 프로파일, 식별정보, 상태, 결과 및 증거 ID가 포함됩니다. CSV 수식 실행 위험을 줄이기 위해 수식 접두 문자를 텍스트로 처리합니다. 서버 전송, 계정 간 동기화, 권한 분리, 변경 이력 및 승인 워크플로는 구현되어 있지 않습니다. 운영 데이터나 고객·개인 식별 정보를 공개 데모에 입력하지 마세요.
 - 시험 항목은 공개 자료를 바탕으로 만든 예시 계획입니다. 실제 양산에서는 제품 Databook, 고객 요구, 승인된 표준 개정판 및 사내 승인 계획이 판정 기준입니다. 화면의 항목은 SK hynix의 내부 recipe를 나타내지 않습니다.
 
 LOT CSV는 다음 헤더를 사용합니다: `lot_id, product, tool, units, yield_pct, top_defect, shift, status`. `status`는 `격리`, `확인 중`, `모니터링`, `해제` 중 하나여야 합니다.
