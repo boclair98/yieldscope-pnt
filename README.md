@@ -110,12 +110,18 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 ### 0-1. Test Program Qualification
 
-Baseline과 Candidate program을 같은 qualification LOT에서 비교해 변경 효과와 제품·Package 손실을 분리합니다.
+양산기술 P&T의 실제 업무 중 `test program 변경 영향 검증`을 다루는 workbench입니다. 기존 화면의 사례 수치와 flow card는 설명용 합성 Case이며, 원자료를 분석하는 흐름은 아래 CSV workbench에서 별도로 수행합니다. 어느 결과도 제품 release, 출하, MES disposition을 승인하지 않습니다.
 
-- Golden correlation, false reject delta, guardband coverage, multisite max delta를 release gate로 관리합니다.
-- 8-site yield map으로 평균 대비 site 편차를 확인하고 socket·contact 집중도를 빠르게 찾습니다.
-- Test time과 UPH는 전후값과 개선율을 함께 표시하되, 품질 gate가 깨지면 속도가 좋아져도 release하지 않습니다.
-- Case별로 `PROGRAM PASS · PRODUCT HOLD`, `HOLD · SOCKET RE-QUAL`, `PROGRAM PASS · MATERIAL HOLD`를 구분해 Program·제품·자재 판정을 섞지 않습니다.
+- Baseline/Candidate의 동일 UUT를 LOT·test stage·corner·site·tester가 일치하는 paired cohort로 비교합니다. 한 study는 한 stage와 한 condition만 허용하고, 다른 corner는 별도 study로 나눕니다.
+- Paired coverage·전체/LOT별 표본 수·LOT/site 수, first-pass yield 변화, 관측 final-fail DPPM 변화, 양방향 first-pass 전이, retest recovery, P95 test time, golden set 판정 일치율, site spread 및 최악 LOT의 FPY 변화를 계산합니다. LOT 수·LOT별 최소 paired unit·최악 LOT FPY 하락 한계도 사용자가 plan에 맞게 설정합니다.
+- 모든 pass/fail gate의 limit은 빈칸으로 시작합니다. 담당자가 승인된 qualification plan의 기준을 입력해야 하며, `ENGINEERING REVIEW 가능`은 수치 gate 통과일 뿐 사람의 승인·제품 release가 아닙니다.
+- CSV 필수 헤더: `unit_id, lot_id, test_stage, test_condition, program_revision, site, tester_id, first_pass, final_pass, retest_count, first_bin, final_bin, golden_expected, test_time_sec`.
+- `first_pass`는 최초 검사, `final_pass`는 승인된 retest까지 마친 최종 상태입니다. `retest_count`는 최초 검사 이후 재시험 횟수, `first_bin`/`final_bin`은 최초/최종 FAIL bin, `golden_expected`는 승인 Golden set의 기대 PASS/FAIL(비 Golden은 공란)입니다. revision당 unit은 한 행이어야 하며, 두 revision의 paired unit은 LOT·stage·condition·site·tester 식별자가 일치해야 합니다. 분석 전에 Baseline/Candidate revision을 사용자가 직접 선택합니다.
+- 비교는 동일 unit 교집합만 사용합니다. Candidate의 paired coverage가 승인 기준보다 낮거나 LOT별 최소 표본이 부족하면 gate가 통과하지 않습니다. UI는 열화 기준으로 정렬한 최악 LOT 20개까지만 보여주고 JSON에도 익명 alias로 최대 20개만 포함합니다.
+- 결과는 브라우저 메모리에서 계산합니다. JSON 보고서에는 원본 unit/LOT/site ID나 행 데이터를 포함하지 않고 source SHA-256, 사용자 traceability alias, 익명 LOT/site 집계, 계산 결과와 gate 근거를 넣습니다. 파일명은 내보내지 않습니다.
+- `observed final-fail DPPM = paired final FAIL / paired units × 1,000,000`; 표본의 관측 비율을 환산한 것이며 생산 DPPM 추정치가 아닙니다. Retest recovery는 `first FAIL 후 final PASS / first FAIL`, golden set 지표는 correlation이 아닌 판정 일치율입니다. P95는 CSV의 unit test time만 사용하며 handler/index 포함 UPH·TAT가 아닙니다.
+- 첫 FAIL에는 `first_bin`, 최종 FAIL에는 `final_bin`, first FAIL 후 final PASS에는 `retest_count ≥ 1`을 요구합니다. 한 CSV는 8 MiB·100,000행·128 sites까지 받으며 단일 test stage/condition에 한정합니다. 이 요약 파일은 전체 retest sequence, guardband/margin, timing coverage, tester correlation을 입증하지 않으므로 해당 항목은 승인 plan의 별도 근거로 검토해야 합니다.
+- 합성 예시와 기본 기준은 동작 확인용이며 현장 기준이 아닙니다. 공개 데모에는 실제 제품·고객·LOT·serial·program/spec 정보나 기밀 파일을 입력하지 마세요.
 
 ### 0-2. P&T Decision Brief
 
@@ -178,7 +184,7 @@ Program revision, socket cycle, contact resistance, PM due, utilization을 같�
 
 ### 5. LOT Disposition & Audit Log
 
-LOT Watchlist에서 `HOLD / RELEASE / FA`를 선택하면 로그인 사용자 기준으로 action, reason, owner, author, created_at을 PostgreSQL에 저장합니다. 읽기는 공개하되 결정 기록과 검토 노트는 coders.kr identity gate 뒤에 둡니다.
+LOT Watchlist의 `HOLD / RELEASE / FA`는 실제 처분 명령이 아니라 **검토 요청**입니다. 요청에는 근거, 증거 ID, Test Program 개정, 승인 규격 개정, 담당 조직을 필수로 남깁니다. 다른 로그인 사용자가 근거 메모와 함께 승인 또는 반려해야 하며, 자기 요청은 스스로 승인할 수 없습니다. 이전 원클릭 기록은 `legacy`로 표시해 승인된 기록으로 승격하지 않습니다. 실제 LOT 상태, MES, 출하는 어느 단계에서도 변경되지 않습니다. 검토 요청 조회는 로그인 후 가능하지만, 사내 역할·조직별 격리는 아직 없어 기밀 데이터를 입력해서는 안 됩니다.
 
 ### 6. RCA Workbench
 
@@ -195,7 +201,7 @@ Containment, Corrective, Preventive action의 전후 효과를 비교하고, 다
 - **수율만으로 결론 내리지 않기**: FPY·DPPM과 함께 Test time, UPH, utilization, TAT를 확인합니다.
 - **First fail과 실제 불량 분리하기**: retest recovery와 alternate tester/socket 재현을 함께 봅니다.
 - **상관과 인과 구분하기**: Risk ratio는 우선순위를 정하는 지표일 뿐 원인 확정값으로 표시하지 않습니다.
-- **판정을 기록 가능한 형태로 만들기**: LOT 결정은 사유·담당자·시각을 남겨 다음 교대와 유관 부서가 같은 기준을 공유합니다.
+- **판정 요청과 실제 조치를 구분하기**: LOT 검토 요청은 증거·Program·Spec 개정을 묶고 독립 검토를 요구하되, 실제 MES/출하 상태에는 반영하지 않습니다.
 - **운영 경계를 분리하기**: 합성 Case·Trend 데이터와 로그인 필요한 review/disposition API를 분리했습니다.
 - **실제 연결 지점을 명시하기**: MES/TMS/Tester export, Databook, FA 결과, 역할 기반 승인선을 향후 adapter 대상으로 정의했습니다.
 
@@ -205,7 +211,7 @@ Containment, Corrective, Preventive action의 전후 효과를 비교하고, 다
 | --- | --- | --- |
 | 양산 투입 여부를 수율 하나로 판단하기 어려움 | Gate·stage·장비 상태 동시 확인 | Release readiness 계산 및 다음 조치 제안 |
 | First fail이 제품 불량인지 testability인지 모호함 | Retest recovery·alternate tester/socket 재현 | Bin triage와 evidence chain 연결 |
-| 원인 분석이 개인의 메모로 끝남 | LOT·action·reason·owner·timestamp 추적 | PostgreSQL audit log와 로그인 경계 |
+| 근거 없는 원클릭 Release가 실제 승인처럼 보임 | 증거·개정·독립 검토 요구 | PostgreSQL 검토 요청 및 2인 검토 경계 |
 | 조치 후 효과가 일시적인지 확인하기 어려움 | Before/after LOT, 감소율, exit criteria | CAPA validation과 shift handoff |
 | 공개 데모에서 사내 데이터를 오해할 수 있음 | 합성 데이터·실제 연결 필요사항 명시 | README·화면·API에서 운영 경계 고지 |
 
@@ -214,7 +220,7 @@ Containment, Corrective, Preventive action의 전후 효과를 비교하고, 다
 ```text
 users
   ├─ quality_reviews       # 엔지니어 검토 노트
-  └─ lot_dispositions      # LOT HOLD / RELEASE / FA 감사 로그
+  └─ lot_dispositions      # 데모 LOT 검토 요청·독립 검토 결과
 ```
 
 | Method | Endpoint | 인증 | 목적 |
@@ -224,8 +230,9 @@ users
 | GET | `/api/me` | 로그인 | 현재 사용자 확인 |
 | GET | `/api/quality/reviews` | 공개 | Case별 검토 노트 조회 |
 | POST | `/api/quality/reviews` | 로그인 | 검토 노트 저장 |
-| GET | `/api/quality/dispositions` | 공개 | Case별 LOT 결정 조회 |
-| POST | `/api/quality/dispositions` | 로그인 | HOLD / RELEASE / FA 저장 |
+| GET | `/api/quality/dispositions` | 로그인 | Case별 검토 요청 조회 |
+| POST | `/api/quality/dispositions` | 로그인 | 근거·증거·개정이 있는 HOLD / RELEASE / FA 검토 요청 |
+| POST | `/api/quality/dispositions/{id}/review` | 로그인·작성자 외 | 요청 승인/반려 (데모 검토일 뿐 실제 조치 아님) |
 
 주요 구현 파일:
 
@@ -323,6 +330,7 @@ cd ../backend
 uv run ruff check app tests alembic
 uv run ruff format --check app tests alembic
 uv run python -m compileall -q app tests alembic
+uv run pytest unit_tests -q # PostgreSQL 없이 판정 규칙 검증
 uv run pytest --collect-only -q
 ```
 
@@ -337,9 +345,9 @@ uv run pytest
 
 - `/` → `200`
 - `/api/health` → `200`, `{"status":"ok"}`
-- `/api/quality/dispositions?scenario=stacker` → `200`
+- 익명 `/api/quality/dispositions?scenario=stacker` → `401` (플랫폼 게이트에서는 로그인 안내 가능)
 - 익명 disposition POST → coders.kr 로그인 화면
-- `/api/openapi.json`에 disposition route 포함
+- `/api/openapi.json`에 disposition 및 독립 검토 route 포함
 
 ## CI / CD와 배포
 
@@ -366,9 +374,11 @@ coders.kr deployment
 
 패키지 Test Matrix의 실행 컨텍스트·검사항목은 브라우저에만 저장되므로 계정 간 공유, 승인 이력, 접근 권한이 필요한 운영 워크플로에 사용할 수 없습니다. 제조 식별자나 고객 자료를 공개 데모에 입력하지 마세요.
 
+Program Qualification CSV 분석도 브라우저 메모리에서만 수행하며 사용자 기기나 서버에 study를 저장하지 않습니다. 사내 인증·권한 분리·감사로그·보존정책·원본 파일 통제와 ATE/MES/TMS/Databook 연동이 없으므로, 이 공개 사이트를 실제 양산 운영 시스템으로 사용하면 안 됩니다. 실제 P&T 데이터로 검증할 수 있는 내부망 파일럿을 만들려면 별도 보안·IT·품질 승인을 먼저 받아야 합니다.
+
 ## 공개 기술 참고
 
-- [SK hynix — P&T 직무 인터뷰](https://talent.skhynix.com/hub/en/job/interview/8)
+- [SK hynix — P&T 직무 인터뷰](https://talent.skhynix.com/hub/en/job/interview/76)
 - [SK hynix — 양산기술(P&T) 직무 소개](https://talent.skhynix.com/hub/ko/job/introduce)
 - [SK hynix — D-TEST Technology](https://news.skhynix.com/en/people-who-create-the-value-of-dram-products-with-high-technical-competitiveness-d-test-technology/)
 - [SK hynix — Semiconductor Testing](https://news.skhynix.com/en/semiconductor-back-end-process-episode-1-understanding-semiconductor-testing/)
@@ -381,6 +391,7 @@ coders.kr deployment
 - [ ] MES/TMS/Tester CSV schema adapter와 업로드 검증
 - [ ] Product·Program·Socket master version 관리
 - [ ] 역할 기반 Test QE / PE / FA / 승인자 권한
+- [ ] 실제 현업 파일럿 전 사내 SSO·조직별 데이터 격리·승인 권한·MES 연동·규격 원본 대조·감사/보존 정책 검증
 - [ ] SPC control chart와 alarm rule configuration
 - [ ] Unit-level traceability 및 FA 결과 attachment
 - [ ] k6 기반 API·조회 부하 테스트와 관측성 대시보드

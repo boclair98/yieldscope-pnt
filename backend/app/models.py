@@ -42,7 +42,9 @@ class User(Base):
         back_populates="author", cascade="all, delete-orphan"
     )
     lot_dispositions: Mapped[list["LotDisposition"]] = relationship(
-        back_populates="author", cascade="all, delete-orphan"
+        back_populates="author",
+        cascade="all, delete-orphan",
+        foreign_keys="LotDisposition.author_id",
     )
 
 
@@ -67,9 +69,15 @@ class QualityReview(Base):
 
 
 class LotDisposition(Base):
-    """Auditable lot action taken by an authenticated engineer."""
+    """Demo decision proposal; never an actual MES/ship authorization."""
 
     __tablename__ = "lot_dispositions"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('legacy', 'pending', 'approved', 'rejected')",
+            name="ck_lot_disposition_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         sa.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -82,8 +90,28 @@ class LotDisposition(Base):
     action: Mapped[str] = mapped_column(sa.String(16), nullable=False)
     reason: Mapped[str] = mapped_column(sa.String(300), nullable=False)
     owner: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(sa.String(120), nullable=False, default="")
+    program_revision: Mapped[str] = mapped_column(
+        sa.String(80), nullable=False, default=""
+    )
+    spec_revision: Mapped[str] = mapped_column(
+        sa.String(80), nullable=False, default=""
+    )
+    status: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, default="pending"
+    )
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    review_note: Mapped[str | None] = mapped_column(sa.String(300), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now(), index=True
     )
 
-    author: Mapped[User] = relationship(back_populates="lot_dispositions")
+    author: Mapped[User] = relationship(
+        back_populates="lot_dispositions", foreign_keys=[author_id]
+    )
+    reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewer_id])

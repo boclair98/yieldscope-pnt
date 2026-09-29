@@ -364,7 +364,15 @@ export type LotDisposition = {
   action: DispositionAction;
   reason: string;
   owner: string;
+  evidence_id: string;
+  program_revision: string;
+  spec_revision: string;
+  status: "legacy" | "pending" | "approved" | "rejected";
+  author_id: string;
   author_name: string;
+  reviewer_name: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
   created_at: string;
 };
 

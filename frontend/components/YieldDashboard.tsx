@@ -38,8 +38,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { signInHref } from "@/lib/identity";
+import { signInHref, useMe } from "@/lib/identity";
 import { PackageTestControl } from "@/components/PackageTestControl";
+import { ProgramQualificationWorkbench } from "@/components/ProgramQualificationWorkbench";
 import {
   METRIC_DEFINITIONS,
   SCENARIO_ORDER,
@@ -356,6 +357,9 @@ export function YieldDashboard() {
   const [reviewState, setReviewState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [dispositions, setDispositions] = useState<LotDisposition[]>([]);
   const [dispositionBusy, setDispositionBusy] = useState<string | null>(null);
+  const [proposalDraft, setProposalDraft] = useState<{ lotId: string; action: DispositionAction; reason: string; evidenceId: string; programRevision: string; specRevision: string; owner: string } | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<{ item: LotDisposition; decision: "approved" | "rejected"; note: string } | null>(null);
+  const me = useMe();
   const [handoffAcknowledged, setHandoffAcknowledged] = useState<string[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const settingsFileRef = useRef<HTMLInputElement>(null);
@@ -462,6 +466,8 @@ export function YieldDashboard() {
         setQuery("");
         searchRef.current?.blur();
         setDataStudioOpen(false);
+        setProposalDraft(null);
+        setReviewDraft(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -681,10 +687,13 @@ export function YieldDashboard() {
         lot.defect,
         lot.shift,
         lot.status,
-        latestDispositionByLot.get(lot.id)?.action ?? "none",
+        latestDispositionByLot.get(lot.id) ? `${latestDispositionByLot.get(lot.id)?.action}:${latestDispositionByLot.get(lot.id)?.status}` : "none",
       ]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
+    const csv = rows.map((row) => row.map((cell) => {
+      const safe = /^[\s\u0000-\u001f]*[=+@-]/.test(cell) ? `'${cell}` : cell;
+      return `"${safe.replaceAll('"', '""')}"`;
+    }).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -716,21 +725,30 @@ export function YieldDashboard() {
     }
   }
 
-  async function createDisposition(lotId: string, action: DispositionAction, defect: string) {
+  function openProposal(lotId: string, action: DispositionAction, defect: string) {
+    setProposalDraft({
+      lotId, action,
+      reason: `${defect} 원인과 영향 범위 검토 필요`,
+      evidenceId: "",
+      programRevision: activeSettings.programRev,
+      specRevision: "",
+      owner: "Test QE",
+    });
+  }
+
+  async function createDisposition(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!proposalDraft) return;
+    const { lotId, action } = proposalDraft;
     const busyKey = `${lotId}:${action}`;
     if (dispositionBusy) return;
     setDispositionBusy(busyKey);
-    const reason = action === "hold"
-      ? `${defect} 원인 재현 및 교차 tester 확인 전 출하 보류`
-      : action === "fa"
-        ? `${defect} 표본을 FA 의뢰하고 package·die 원인 분리`
-        : `${defect} 확인 완료 · golden sample 및 출하 기준 충족`;
     try {
       const response = await fetch("/api/quality/dispositions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ scenario: scenarioKey, lot_id: lotId, action, reason, owner: "Test QE" }),
+        body: JSON.stringify({ scenario: scenarioKey, lot_id: lotId, action, reason: proposalDraft.reason, owner: proposalDraft.owner, evidence_id: proposalDraft.evidenceId, program_revision: proposalDraft.programRevision, spec_revision: proposalDraft.specRevision }),
       });
       if (requiresSignIn(response)) {
         window.location.href = signInHref();
@@ -739,9 +757,32 @@ export function YieldDashboard() {
       if (!response.ok) throw new Error("disposition failed");
       const created = (await response.json()) as LotDisposition;
       setDispositions((current) => [created, ...current]);
-      setNotice(`${lotId} · ${dispositionLabel[action]} 결정을 감사 로그에 기록했습니다.`);
+      setProposalDraft(null);
+      setNotice(`${lotId} · ${dispositionLabel[action]} 검토 요청을 기록했습니다. 실제 LOT 상태는 변경되지 않습니다.`);
     } catch {
-      setNotice("결정 기록에 실패했습니다. API가 준비된 뒤 다시 시도해 주세요.");
+      setNotice("검토 요청 저장에 실패했습니다. 필수 정보와 API 상태를 확인해 주세요.");
+    } finally {
+      setDispositionBusy(null);
+    }
+  }
+
+  async function reviewProposal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reviewDraft || reviewDraft.note.trim().length < 5 || dispositionBusy) return;
+    const { item, decision, note } = reviewDraft;
+    setDispositionBusy(`${item.lot_id}:${item.action}`);
+    try {
+      const response = await fetch(`/api/quality/dispositions/${item.id}/review`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ decision, note: note.trim() }),
+      });
+      if (!response.ok) throw new Error(`review ${response.status}`);
+      const updated = (await response.json()) as LotDisposition;
+      setDispositions((current) => current.map((row) => row.id === updated.id ? updated : row));
+      setReviewDraft(null);
+      setNotice(`${item.lot_id} 검토 결과를 기록했습니다. 실제 출하 승인이 아닙니다.`);
+    } catch {
+      setNotice("검토 기록 실패: 작성자와 다른 로그인 사용자가 검토해야 합니다.");
     } finally {
       setDispositionBusy(null);
     }
@@ -757,7 +798,7 @@ export function YieldDashboard() {
       </a>
 
       <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#08101d]/88 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
           <button
             type="button"
             aria-label="메뉴 열기"
@@ -1182,14 +1223,16 @@ export function YieldDashboard() {
               </div>
             </Panel>
 
+            <ProgramQualificationWorkbench />
+
             <PackageTestControl />
 
             <Panel className="mt-4 overflow-hidden border-[#55b8f6]/18 bg-[linear-gradient(135deg,rgba(85,184,246,0.065),rgba(17,27,43,0.82)_42%,rgba(49,199,162,0.035))]">
               <div className="grid xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.12fr)_minmax(270px,0.72fr)]">
                 <div className="border-b border-white/[0.07] p-5 sm:p-6 xl:border-b-0 xl:border-r">
-                  <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.16em] text-[#8fcbe9]"><TestTube2 className="size-3.5" /> TEST PROGRAM QUALIFICATION</div>
-                  <h3 className="mt-3 text-[18px] font-semibold tracking-[-0.03em] text-[#eef4fb]">Baseline과 Candidate를 분리 검증</h3>
-                  <p className="mt-2 text-[10px] leading-5 text-[#8392a7]">Program 변경 효과와 제품·Package 손실을 섞지 않고 양산 release 근거를 잠급니다.</p>
+                  <div className="flex flex-wrap items-center gap-2 text-[9px] font-semibold tracking-[0.16em] text-[#8fcbe9]"><TestTube2 className="size-3.5" /> SYNTHETIC CASE STUDY <span className="rounded border border-[#f2b84b]/20 bg-[#f2b84b]/[0.05] px-2 py-1 text-[8px] tracking-normal text-[#e4c57e]">모든 숫자·기준·LOT는 합성</span></div>
+                  <h3 className="mt-3 text-[18px] font-semibold tracking-[-0.03em] text-[#eef4fb]">Baseline / Candidate qualification 사례</h3>
+                  <p className="mt-2 text-[10px] leading-5 text-[#8392a7]">아래 수치는 화면 구조를 보여주기 위해 만든 예시입니다. 실제 계산과 제품별 기준 입력은 위 Qualification Workbench를 사용하세요.</p>
 
                   <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                     <div className="rounded-xl border border-white/[0.07] bg-[#08101d]/45 p-3"><p className="text-[7px] font-semibold tracking-[0.12em] text-[#627187]">BASELINE</p><p className="mt-2 text-[11px] font-semibold text-[#aebccc]">{qualification.baselineRev}</p></div>
@@ -1372,16 +1415,16 @@ export function YieldDashboard() {
 
             <Panel className="mt-4 overflow-hidden">
               <div className="flex flex-col gap-3 border-b border-white/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div><p className="text-[9px] font-semibold tracking-[0.14em] text-[#67768b]">LOT WATCHLIST · DISPOSITION</p><h3 className="mt-1 text-sm font-semibold">우선 확인 LOT</h3><p className="mt-1 text-[9px] text-[#68778d]">Hold / Release / FA 결정은 로그인 후 감사 로그에 남습니다.</p></div>
+                <div><p className="text-[9px] font-semibold tracking-[0.14em] text-[#67768b]">LOT WATCHLIST · REVIEW REQUEST</p><h3 className="mt-1 text-sm font-semibold">우선 확인 LOT</h3><p className="mt-1 text-xs leading-5 text-[#8b9aaf]">Hold / Release / FA는 증거를 첨부한 검토 요청입니다. 작성자와 다른 사용자의 검토가 필요하며 실제 LOT·MES·출하 상태는 변경되지 않습니다.</p></div>
                 <div className="flex flex-wrap items-center gap-2">
                   {selectedLots.length > 0 && <span className="rounded-lg border border-[#f2b84b]/20 bg-[#f2b84b]/[0.07] px-2.5 py-1.5 text-[9px] text-[#dcb45e]">{selectedLots.length}개 LOT 비교 선택</span>}
-                  {dispositions.length > 0 && <span className="rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-2.5 py-1.5 text-[9px] text-[#a6d7f3]">결정 로그 {dispositions.length}건</span>}
+                  {dispositions.length > 0 && <span className="rounded-lg border border-[#55b8f6]/20 bg-[#55b8f6]/[0.06] px-2.5 py-1.5 text-[9px] text-[#a6d7f3]">검토 기록 {dispositions.length}건</span>}
                   <button type="button" onClick={exportCsv} className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3 py-2 text-[9px] text-[#95a3b6] transition hover:text-white"><Download className="size-3" /> CSV 내보내기</button>
                 </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1010px] border-collapse text-left">
-                  <thead><tr className="text-[8px] font-semibold tracking-[0.11em] text-[#59687e]">{["COMPARE", "LOT ID", "PRODUCT", "TOOL", "UNITS", "YIELD", "TOP DEFECT", "SHIFT", "STATE", "DISPOSITION"].map((head) => <th key={head} className="bg-white/[0.018] px-4 py-3 first:pl-6">{head}</th>)}</tr></thead>
+                  <thead><tr className="text-[8px] font-semibold tracking-[0.11em] text-[#59687e]">{["COMPARE", "LOT ID", "PRODUCT", "TOOL", "UNITS", "YIELD", "TOP DEFECT", "SHIFT", "DEMO STATE", "REVIEW REQUEST"].map((head) => <th key={head} className="bg-white/[0.018] px-4 py-3 first:pl-6">{head}</th>)}</tr></thead>
                   <tbody>
                     {filteredLots.map((lot) => {
                       const checked = selectedLots.includes(lot.id);
@@ -1396,8 +1439,15 @@ export function YieldDashboard() {
                           <td className={`px-4 py-3.5 font-medium tabular-nums ${lot.yield < 96.5 ? "text-[#ff8994]" : "text-[#b9c5d5]"}`}>{lot.yield.toFixed(2)}%</td>
                           <td className="px-4 py-3.5 text-[#a9b5c5]">{lot.defect}</td>
                           <td className="px-4 py-3.5 text-[#8290a5]">{lot.shift}</td>
-                          <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2 py-1 text-[8px] ${latest ? dispositionStyle[latest.action] : statusStyle[lot.status]}`}>{latest ? dispositionLabel[latest.action] : lot.status}</span></td>
-                          <td className="px-4 py-2.5"><div className="flex items-center gap-1.5"><DispositionButton label="Hold" action="hold" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "hold", lot.defect)} /><DispositionButton label="Release" action="release" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "release", lot.defect)} /><DispositionButton label="FA" action="fa" lotId={lot.id} busy={dispositionBusy} onClick={() => createDisposition(lot.id, "fa", lot.defect)} /></div></td>
+                          <td className="px-4 py-3.5"><span className={`inline-flex rounded-full border px-2 py-1 text-[8px] ${statusStyle[lot.status]}`}>{lot.status}</span></td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <DispositionButton label="Hold" action="hold" lotId={lot.id} busy={dispositionBusy} onClick={() => openProposal(lot.id, "hold", lot.defect)} />
+                              <DispositionButton label="Release" action="release" lotId={lot.id} busy={dispositionBusy} onClick={() => openProposal(lot.id, "release", lot.defect)} />
+                              <DispositionButton label="FA" action="fa" lotId={lot.id} busy={dispositionBusy} onClick={() => openProposal(lot.id, "fa", lot.defect)} />
+                            </div>
+                            {latest && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] text-[#9baabc]"><span className={`rounded border px-1.5 py-0.5 ${dispositionStyle[latest.action]}`}>{dispositionLabel[latest.action]} · {latest.status === "pending" ? "검토 대기" : latest.status === "approved" ? "데모 검토 완료" : latest.status === "rejected" ? "반려" : "이전 데모 기록"}</span><span title={`${latest.reason} · ${latest.evidence_id || "증거 없음"}`}>{latest.author_name}</span>{latest.status === "pending" && me && me.id !== latest.author_id && <><button type="button" onClick={() => setReviewDraft({ item: latest, decision: "approved", note: "" })} className="min-h-9 rounded border border-[#31c7a2]/25 px-2 text-[#77ddc2]">검토 승인</button><button type="button" onClick={() => setReviewDraft({ item: latest, decision: "rejected", note: "" })} className="min-h-9 rounded border border-[#f36b78]/25 px-2 text-[#ff9aa3]">반려</button></>}</div>}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1512,7 +1562,7 @@ export function YieldDashboard() {
 
               <Panel className="border-[#55b8f6]/12 bg-[linear-gradient(145deg,rgba(85,184,246,0.06),rgba(17,27,43,0.78))] p-5 sm:p-6">
                 <div className="flex items-center gap-2 text-[10px] font-medium text-[#9fd6f5]"><AlertCircle className="size-4" /> Portfolio disclosure</div>
-                <p className="mt-4 text-[10px] leading-5 text-[#7d8da3]">공개 기술 자료를 참고한 <strong className="font-medium text-[#b7c4d4]">HBM-inspired 합성 데이터</strong>로 업무 흐름을 재현했습니다. 로그인 사용자의 LOT 결정은 실제 감사 로그 API에 저장됩니다.</p>
+                <p className="mt-4 text-[10px] leading-5 text-[#7d8da3]">공개 기술 자료를 참고한 <strong className="font-medium text-[#b7c4d4]">HBM-inspired 합성 데이터</strong>로 업무 흐름을 재현했습니다. 로그인 사용자의 LOT 검토 요청과 독립 검토 결과만 데모 DB에 저장됩니다.</p>
                 <p className="mt-3 text-[10px] leading-5 text-[#7d8da3]">표시된 수치·임계값·LOT·장비명은 실제 기업의 내부 사양이 아닙니다. 사내 MES·TMS·FA·Databook을 연결하기 전에는 운영 판단에 사용하지 마세요.</p>
               </Panel>
             </div>
@@ -1529,6 +1579,35 @@ export function YieldDashboard() {
           </footer>
         </main>
       </div>
+
+      {proposalDraft && (
+        <div role="dialog" aria-modal="true" aria-labelledby="proposal-title" className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-[#020711]/80 p-4 backdrop-blur-sm">
+          <form onSubmit={(event) => void createDisposition(event)} className="w-full max-w-lg rounded-2xl border border-white/[0.12] bg-[#101b2b] p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-[#8fcbe9]">DEMO REVIEW REQUEST</p><h2 id="proposal-title" className="mt-1 break-keep text-lg font-semibold">{proposalDraft.lotId} · {dispositionLabel[proposalDraft.action]} 검토 요청</h2></div><button type="button" onClick={() => setProposalDraft(null)} aria-label="닫기" className="grid size-10 shrink-0 place-items-center rounded-lg border border-white/10"><X className="size-4" /></button></div>
+            <p className="mt-3 rounded-lg border border-[#f2b84b]/20 bg-[#f2b84b]/[0.06] p-3 text-xs leading-5 text-[#e6c889]">이 요청은 합성 데이터 데모용입니다. 다른 사용자의 검토가 끝나도 실제 LOT 격리·해제·출하 시스템에는 반영되지 않습니다. 기밀 제조 데이터를 입력하지 마세요.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2 text-xs text-[#aebed1]">판단 근거<textarea autoFocus required minLength={5} maxLength={300} value={proposalDraft.reason} onChange={(event) => setProposalDraft({ ...proposalDraft, reason: event.target.value })} className="mt-1 min-h-20 w-full rounded-lg border border-white/10 bg-[#09121f] p-3 text-sm text-white" /></label>
+              <label className="text-xs text-[#aebed1]">증거 / 분석 ID<input required maxLength={120} value={proposalDraft.evidenceId} onChange={(event) => setProposalDraft({ ...proposalDraft, evidenceId: event.target.value })} placeholder="예: DEMO-FA-017" className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-[#09121f] px-3 text-sm text-white" /></label>
+              <label className="text-xs text-[#aebed1]">담당 조직<input required maxLength={64} value={proposalDraft.owner} onChange={(event) => setProposalDraft({ ...proposalDraft, owner: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-[#09121f] px-3 text-sm text-white" /></label>
+              <label className="text-xs text-[#aebed1]">Test Program revision<input required maxLength={80} value={proposalDraft.programRevision} onChange={(event) => setProposalDraft({ ...proposalDraft, programRevision: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-[#09121f] px-3 text-sm text-white" /></label>
+              <label className="text-xs text-[#aebed1]">승인 Spec / Databook revision<input required maxLength={80} value={proposalDraft.specRevision} onChange={(event) => setProposalDraft({ ...proposalDraft, specRevision: event.target.value })} placeholder="예: DEMO-SPEC-R3" className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-[#09121f] px-3 text-sm text-white" /></label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setProposalDraft(null)} className="min-h-11 rounded-lg border border-white/10 px-4 text-sm">취소</button><button type="submit" disabled={Boolean(dispositionBusy)} className="min-h-11 rounded-lg bg-[#f2b84b] px-4 text-sm font-semibold text-[#20170b] disabled:opacity-50">검토 요청 저장</button></div>
+          </form>
+        </div>
+      )}
+
+      {reviewDraft && (
+        <div role="dialog" aria-modal="true" aria-labelledby="review-title" className="fixed inset-0 z-[70] flex items-center justify-center bg-[#020711]/80 p-4 backdrop-blur-sm">
+          <form onSubmit={(event) => void reviewProposal(event)} className="w-full max-w-lg rounded-2xl border border-white/[0.12] bg-[#101b2b] p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-[#8fcbe9]">INDEPENDENT DEMO REVIEW</p><h2 id="review-title" className="mt-1 break-keep text-lg font-semibold">{reviewDraft.item.lot_id} · {reviewDraft.decision === "approved" ? "검토 승인" : "반려"}</h2></div><button type="button" onClick={() => setReviewDraft(null)} aria-label="닫기" className="grid size-10 shrink-0 place-items-center rounded-lg border border-white/10"><X className="size-4" /></button></div>
+            <dl className="mt-4 grid gap-2 rounded-xl border border-white/10 bg-[#09121f] p-4 text-xs text-[#aebed1]"><div><dt className="text-[#7e91a7]">요청</dt><dd>{dispositionLabel[reviewDraft.item.action]} · {reviewDraft.item.reason}</dd></div><div><dt className="text-[#7e91a7]">근거 ID</dt><dd>{reviewDraft.item.evidence_id}</dd></div><div><dt className="text-[#7e91a7]">Program / Spec</dt><dd>{reviewDraft.item.program_revision} / {reviewDraft.item.spec_revision}</dd></div></dl>
+            <label className="mt-4 block text-xs text-[#aebed1]">독립 검토 근거<textarea autoFocus required minLength={5} maxLength={300} value={reviewDraft.note} onChange={(event) => setReviewDraft({ ...reviewDraft, note: event.target.value })} placeholder="증거를 어떻게 확인했고 어떤 조건을 충족했는지 적어 주세요." className="mt-1 min-h-28 w-full rounded-lg border border-white/10 bg-[#09121f] p-3 text-sm text-white" /></label>
+            <p className="mt-3 text-xs leading-5 text-[#e6c889]">이 결과는 데모 검토 기록이며 실제 출하·MES 승인이 아닙니다.</p>
+            <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setReviewDraft(null)} className="min-h-11 rounded-lg border border-white/10 px-4 text-sm">취소</button><button type="submit" disabled={Boolean(dispositionBusy)} className="min-h-11 rounded-lg bg-[#f2b84b] px-4 text-sm font-semibold text-[#20170b] disabled:opacity-50">검토 결과 기록</button></div>
+          </form>
+        </div>
+      )}
 
       {dataStudioOpen && (
         <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-labelledby="data-studio-title">
@@ -1648,7 +1727,7 @@ export function YieldDashboard() {
 
 function DispositionButton({ label, action, lotId, busy, onClick }: { label: string; action: DispositionAction; lotId: string; busy: string | null; onClick: () => void }) {
   const active = busy === `${lotId}:${action}`;
-  return <button type="button" onClick={onClick} disabled={Boolean(busy)} aria-label={`${lotId} ${label} 기록`} className={`rounded-md border px-2 py-1 text-[8px] font-medium transition disabled:cursor-wait disabled:opacity-45 ${action === "hold" ? "border-[#f36b78]/18 text-[#ff9aa3] hover:bg-[#f36b78]/10" : action === "release" ? "border-[#31c7a2]/18 text-[#67ddbf] hover:bg-[#31c7a2]/10" : "border-[#f2b84b]/18 text-[#ffd16b] hover:bg-[#f2b84b]/10"}`}>{active ? "…" : label}</button>;
+  return <button type="button" onClick={onClick} disabled={Boolean(busy)} aria-label={`${lotId} ${label} 검토 요청`} className={`min-h-9 rounded-md border px-2 text-[10px] font-medium transition disabled:cursor-wait disabled:opacity-45 ${action === "hold" ? "border-[#f36b78]/18 text-[#ff9aa3] hover:bg-[#f36b78]/10" : action === "release" ? "border-[#31c7a2]/18 text-[#67ddbf] hover:bg-[#31c7a2]/10" : "border-[#f2b84b]/18 text-[#ffd16b] hover:bg-[#f2b84b]/10"}`}>{active ? "…" : label}</button>;
 }
 
 function requiresSignIn(response: Response) {
