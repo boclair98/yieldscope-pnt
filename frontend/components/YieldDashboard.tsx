@@ -572,10 +572,6 @@ export function YieldDashboard() {
     const latestYield = configuredTrend[configuredTrend.length - 1]?.yield ?? 0;
     const yieldState = latestYield >= activeSettings.targetYield ? "pass" as const : latestYield >= activeSettings.targetYield - 0.5 ? "watch" as const : "pending" as const;
     const dppmState = activeStage.dppm <= activeSettings.dppmLimit ? "pass" as const : activeStage.dppm <= activeSettings.dppmLimit * 1.2 ? "watch" as const : "pending" as const;
-    const score = Math.max(
-      0,
-      Math.round(((gatePass + gateWatch * 0.55) / controlPlan.gates.length) * 100 - holdStages.length * 12 - blockingAssets.length * 10 - (yieldState === "pending" ? 8 : yieldState === "watch" ? 3 : 0) - (dppmState === "pending" ? 6 : dppmState === "watch" ? 2 : 0)),
-    );
     const status: ReleaseStatus = gatePending.length > 0 || holdStages.length > 0 || blockingAssets.length > 0 || yieldState === "pending" || dppmState === "pending"
       ? "HOLD"
       : gateWatch > 0 || attentionAssets.length > 0 || yieldState === "watch" || dppmState === "watch"
@@ -599,7 +595,7 @@ export function YieldDashboard() {
         : attentionAssets[0]
           ? `${attentionAssets[0].id} PM / 상태 확인 후 correlation 재검`
           : "다음 LOT의 golden sample과 TAT를 함께 확인";
-    return { score, status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
+    return { status, checks, nextAction, gatePass, gateWatch, gatePending: gatePending.length, holdStages: holdStages.length };
   }, [activeSettings.dppmLimit, activeSettings.targetYield, activeStage, configuredTrend, controlPlan, operations]);
 
   const testabilityFirst = activeStage.retestRecovery >= activeSettings.retestTarget && !/(package 원인 우선|SAM|물리 분석)/i.test(activeStage.note);
@@ -637,7 +633,7 @@ export function YieldDashboard() {
     const decision = roleLens === "test"
       ? `${testabilityFirst ? "Testability 우선" : "제품 / Package 원인 우선"} · ${releaseReadiness.status}`
       : roleLens === "quality"
-        ? `${releaseReadiness.status} · ${releaseReadiness.score}% readiness`
+        ? `${releaseReadiness.status} · ${releaseReadiness.gatePass}/${controlPlan.gates.length} Gate 통과`
         : `${activeStage.status === "hold" ? "Stage hold" : activeStage.status === "watch" ? "Watch" : "Stable"} · ${activeStage.loss}`;
     const decisionDetail = roleLens === "test"
       ? `alternate tester/socket 교차 확인 후 ${releaseReadiness.nextAction}`
@@ -839,7 +835,7 @@ export function YieldDashboard() {
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 text-[11px] text-[#76859b] xl:flex">
               <span className="size-1.5 rounded-full bg-[#31c7a2] shadow-[0_0_0_3px_rgba(49,199,162,0.09)]" />
-              DATA SNAPSHOT · {activeSettings.window}
+              CASE DATA · {customLots[scenarioKey] ? "LOCAL CSV" : "SYNTHETIC"}
             </div>
             <button
               type="button"
@@ -921,30 +917,51 @@ export function YieldDashboard() {
 
         <main id="main-content" className="min-w-0 px-4 pb-16 pt-7 sm:px-6 lg:px-8 lg:pt-9 xl:px-10">
           <section id="overview" className="scroll-mt-24">
-            <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.15em] text-[#f2b84b]">
-                  <span className="h-px w-6 bg-[#f2b84b]" /> P&amp;T MASS PRODUCTION INTELLIGENCE
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold tracking-[0.15em] text-[#f2b84b]">
+                  <span className="h-px w-6 bg-[#f2b84b]" /> P&amp;T OPERATIONS · SHIFT OVERVIEW
                 </div>
-                <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] sm:text-[34px]">양산 Test를 더 빠르고, 더 정확하게.</h1>
-                <p className="mt-2 max-w-3xl text-[13px] leading-6 text-[#8391a6] sm:text-sm">Test program release부터 불량 격리, 원인 재현, 생산성 검증까지 연결해 수율·품질·TAT를 한 번에 판단합니다.</p>
+                <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] sm:text-[32px]">양산 Test 운영 현황</h1>
+                <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#98a6b9]">{activeSettings.caseLabel} · {activeSettings.product} · {activeSettings.stage} 공정의 품질 신호와 다음 확인 항목</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <label className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]">
-                  기간
-                  <select className="bg-transparent font-medium text-[#e3eaf4] outline-none" defaultValue="30"><option className="bg-[#101a29]" value="30">최근 30일</option><option className="bg-[#101a29]" value="90">최근 90일</option></select>
-                </label>
-                <span className="max-w-[220px] truncate rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]" title={activeSettings.product}>제품군 <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.product}</strong></span>
-                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#a7b4c6]">공정 <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.stage}</strong></span>
-                <button type="button" onClick={() => { setQuery(""); setSelectedLots([]); }} className="grid size-9 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#8b9aaf] transition hover:text-white" aria-label="필터 초기화"><RotateCcw className="size-3.5" /></button>
+                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#8f9db0]">관측 기간 <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.window}</strong></span>
+                <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-[#8f9db0]">Program <strong className="ml-2 font-medium text-[#e3eaf4]">{activeSettings.programRev}</strong></span>
+                <button type="button" onClick={() => { setDraftSettings(activeSettings); setDataStudioOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#55b8f6]/25 bg-[#55b8f6]/[0.08] px-3.5 font-medium text-[#b8e0f6] transition hover:border-[#55b8f6]/40 hover:bg-[#55b8f6]/[0.13]" aria-label="현재 Case 데이터 설정 열기"><Settings2 className="size-4" /> 데이터 설정</button>
               </div>
             </div>
 
-            <div className="mt-6 flex gap-2 overflow-x-auto pb-1 sm:hidden">
-              {SCENARIO_ORDER.map((key) => {
-                const item = SCENARIOS[key];
-                return <button key={key} type="button" onClick={() => selectScenario(key)} className={`shrink-0 rounded-full border px-3 py-2 text-[11px] ${key === scenarioKey ? "border-[#f2b84b]/40 bg-[#f2b84b]/10 text-[#ffd16b]" : "border-white/[0.08] text-[#8593a8]"}`}>{item.shortLabel}</button>;
+            <div role="note" className="mt-4 flex flex-col gap-2 rounded-xl border border-[#f2b84b]/20 bg-[#f2b84b]/[0.055] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-[#f2c25f]" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-[#f0d99e]">현장 시스템 미연동 · 공개 시연 데이터</p>
+                  <p className="mt-0.5 text-[12px] leading-5 text-[#a99a75]">기본 수치는 합성 예시입니다. 사용자 파일은 이 브라우저 범위에서만 처리되며, 실제 LOT·고객·제품 식별자나 내부 규격을 입력하지 마세요.</p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-md border border-[#f2b84b]/15 px-2 py-1 text-[11px] font-medium text-[#e6c774]">{customLots[scenarioKey] ? "브라우저 CSV" : "합성 Case"}</span>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-3" role="group" aria-label="운영 Case 선택">
+              {SCENARIO_ORDER.map((key, index) => {
+                const active = key === scenarioKey;
+                const item = scenarioSettings[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => selectScenario(key)}
+                    className={`min-w-0 rounded-xl border p-3.5 text-left transition sm:p-4 ${active ? "border-[#f2b84b]/35 bg-[#f2b84b]/[0.085] shadow-[0_8px_24px_rgba(0,0,0,0.12)]" : "border-white/[0.075] bg-white/[0.025] hover:border-white/[0.15] hover:bg-white/[0.045]"}`}
+                  >
+                    <span className={`text-[11px] font-semibold tracking-[0.1em] ${active ? "text-[#e4bf6a]" : "text-[#718097]"}`}>CASE 0{index + 1} · {item.stage}</span>
+                    <span className="mt-1.5 block truncate text-[14px] font-semibold text-[#e4eaf2]" title={item.caseLabel}>{item.caseLabel}</span>
+                    <span className="mt-1 block truncate text-[12px] text-[#7d8ba0]" title={`${item.product} · ${item.programRev}`}>{item.product} · {item.programRev}</span>
+                    <span className={`mt-2 block text-[11px] font-medium ${active ? "text-[#f0cf80]" : "text-[#6f7d91]"}`}>{active ? "현재 선택" : "Case 열기"}</span>
+                  </button>
+                );
               })}
             </div>
 
@@ -965,8 +982,8 @@ export function YieldDashboard() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[8px] font-medium tracking-[0.08em] text-[#7d8ca1]">
                   <span className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5">{activeSettings.programRev}</span>
-                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5">{activeSettings.window}</span>
-                  <span className={`rounded-lg border px-2.5 py-1.5 ${customLots[scenarioKey] ? "border-[#55b8f6]/20 bg-[#55b8f6]/[0.07] text-[#a9dcf6]" : "border-[#31c7a2]/20 bg-[#31c7a2]/[0.06] text-[#77d8bf]"}`}>{customLots[scenarioKey] ? "USER LOT DATA" : "SYNTHETIC BASELINE"}</span>
+                  <span className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5">CASE WINDOW · {activeSettings.window}</span>
+                  <span className={`rounded-lg border px-2.5 py-1.5 ${customLots[scenarioKey] ? "border-[#55b8f6]/20 bg-[#55b8f6]/[0.07] text-[#a9dcf6]" : "border-[#f2b84b]/20 bg-[#f2b84b]/[0.06] text-[#e6c774]"}`}>{customLots[scenarioKey] ? "LOCAL CSV · NOT CONNECTED" : "SYNTHETIC CASE"}</span>
                 </div>
               </div>
 
@@ -978,8 +995,10 @@ export function YieldDashboard() {
                       <h2 id="shift-decision-title" className={`mt-2 text-[29px] font-semibold tracking-[-0.045em] ${releaseStatusStyle[releaseReadiness.status].text}`}>{releaseReadiness.status}</h2>
                       <p className="mt-3 max-w-xl text-[12px] font-medium leading-6 text-[#d4deea]">{commandCenter.decisionStatement}</p>
                     </div>
-                    <div className="grid size-[76px] shrink-0 place-items-center rounded-full p-[6px]" style={{ background: `conic-gradient(${releaseReadiness.status === "GO" ? "#31c7a2" : releaseReadiness.status === "HOLD" ? "#f36b78" : "#f2b84b"} ${releaseReadiness.score}%, rgba(255,255,255,0.07) 0)` }} aria-label={`Release readiness ${releaseReadiness.score}%`}>
-                      <span className="grid size-full place-items-center rounded-full bg-[#0b1422] text-center"><span><strong className="block text-lg font-semibold tabular-nums text-[#edf3fc]">{releaseReadiness.score}</strong><span className="block text-[7px] tracking-[0.12em] text-[#69788e]">READINESS</span></span></span>
+                    <div className={`shrink-0 rounded-xl border px-3.5 py-3 text-right ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background}`} aria-label={`양산 검토 gate ${releaseReadiness.gatePass}개 통과, ${releaseReadiness.gateWatch}개 주의, ${releaseReadiness.gatePending}개 미완료`}>
+                      <span className="block text-[11px] font-semibold tracking-[0.08em] text-[#8f9db0]">PLAN GATES</span>
+                      <span className={`mt-1 block text-[20px] font-semibold tabular-nums ${releaseStatusStyle[releaseReadiness.status].text}`}>{releaseReadiness.gatePass}<span className="text-[13px] font-normal text-[#7c8aa0]"> / {controlPlan.gates.length}</span></span>
+                      <span className="mt-0.5 block text-[11px] text-[#a8b4c3]">WATCH {releaseReadiness.gateWatch} · OPEN {releaseReadiness.gatePending}</span>
                     </div>
                   </div>
 
@@ -1041,7 +1060,7 @@ export function YieldDashboard() {
                     {kpi.unit && <span className="mb-1 text-[11px] text-[#7d8ba0]">{kpi.unit}</span>}
                   </div>
                   <p className={`mt-2 text-[10px] ${kpi.tone === "good" ? "text-[#54d7b7]" : kpi.tone === "alert" ? "text-[#ff8e99]" : kpi.tone === "warn" ? "text-[#ffad68]" : "text-[#718097]"}`}>{kpi.delta}</p>
-                  <p className="mt-3 border-t border-white/[0.055] pt-3 text-[9px] text-[#56657b] opacity-0 transition group-hover:opacity-100">{kpi.hint}</p>
+                  <p className="mt-3 border-t border-white/[0.055] pt-3 text-[12px] leading-5 text-[#8492a5]">{kpi.hint}</p>
                 </article>
               ))}
             </div>
@@ -1053,7 +1072,7 @@ export function YieldDashboard() {
                     eyebrow="P&T RELEASE READINESS"
                     title="양산 투입 판단을 근거와 함께 잠급니다"
                     description="수율만 보는 대신 Databook·Golden sample·Tester correlation·Flow health를 동시에 확인합니다."
-                    action={<span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[9px] font-semibold ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background} ${releaseStatusStyle[releaseReadiness.status].text}`}><span className={`size-1.5 rounded-full ${releaseStatusStyle[releaseReadiness.status].dot}`} /> {releaseReadiness.score}% readiness</span>}
+                    action={<span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${releaseStatusStyle[releaseReadiness.status].border} ${releaseStatusStyle[releaseReadiness.status].background} ${releaseStatusStyle[releaseReadiness.status].text}`}><span className={`size-1.5 rounded-full ${releaseStatusStyle[releaseReadiness.status].dot}`} /> {releaseReadiness.gatePass}/{controlPlan.gates.length} Gate 통과 · {releaseReadiness.gatePending} 미완료</span>}
                   />
                   <div className="mt-5 grid gap-2 sm:grid-cols-3">
                     <DataPoint label="PASS GATES" value={`${releaseReadiness.gatePass} / ${controlPlan.gates.length}`} good={releaseReadiness.gatePending === 0} />

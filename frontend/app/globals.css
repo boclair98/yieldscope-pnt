@@ -58,8 +58,8 @@ button {
   background: rgba(255, 255, 255, 0.035);
   padding: 0.65rem 0.75rem;
   color: #dce7f3;
-  font-size: 0.7rem;
-  line-height: 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.5rem;
   outline: none;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
@@ -80,6 +80,20 @@ button {
 
 .yield-dashboard [class~="text-[10px]"] {
   font-size: 0.8125rem;
+}
+
+.yield-dashboard [class~="text-[11px]"] {
+  font-size: 0.8125rem;
+}
+
+.yield-dashboard button,
+.yield-dashboard select {
+  min-height: 44px;
+}
+
+.yield-dashboard :is(h1, h2, h3, p) {
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .package-test-control :is(button, input, select) {

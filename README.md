@@ -98,13 +98,15 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 
 ### 0. Shift Command Center
 
-첫 화면에서 분석 차트를 열기 전에 `Release · Loss · Exposure · Owner · SLA`를 한 번에 판단합니다.
+첫 화면은 소개 문구 대신 실제 운영 대시보드로 시작합니다. 사용자는 Stacker·Socket·MUF Case를 바로 전환하고, 제품·공정·Program 개정·시나리오 기간과 데이터 출처를 확인한 다음 `Release · Loss · Exposure · Owner · SLA`를 판단합니다.
 
-- `GO / CONDITIONAL / HOLD`와 readiness 점수, 다음 필수 확인 항목을 한 문장으로 제시합니다.
+- `GO / CONDITIONAL / HOLD`, PASS/WATCH/미완료 Gate 수, 다음 필수 확인 항목을 기준과 함께 제시합니다. 근거가 정의되지 않은 임의 readiness 점수는 표시하지 않습니다.
 - Yield gap, DPPM gap, 미해제 LOT·노출 수량을 기준값과 함께 표시합니다.
 - Retest recovery와 alternate tester/socket·물리 분석 증거를 함께 보며 `Testability 선확인`과 `Product / Package FA 선확인` 방향을 분리합니다.
 - Containment → Next check → Exit criteria를 `NOW / +60분 / +120분` Action queue로 배치합니다.
 - `Detect → Contain → Reproduce → Decide → Verify` Control loop에서 현재 단계와 다음 근거 화면을 연결합니다.
+- KPI 정의를 hover에 숨기지 않고 항상 표시해 터치 환경에서도 확인할 수 있도록 했습니다. 실제 제품·공정별 Case 전환은 첫 화면에서 바로 조작합니다.
+- 실시간 공장 시스템과 연결되지 않았음을 대시보드 상단에서 명시합니다. 업로드 CSV는 현재 브라우저 범위에서 처리되며 실제 사내 승인·MES 처분 동작을 하지 않습니다.
 
 이 UI는 단순 모니터링보다 **교대 시작 시 무엇을 멈추고, 누가 확인하며, 어떤 기준으로 다시 투입할지**를 빠르게 합의하는 데 초점을 맞췄습니다.
 
