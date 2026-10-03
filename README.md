@@ -123,7 +123,9 @@ Containment → Corrective → Preventive → 개선 후 LOT 검증
 - 결과는 브라우저 메모리에서 계산합니다. JSON 보고서에는 원본 unit/LOT/site ID나 행 데이터를 포함하지 않고 source SHA-256, 사용자 traceability alias, 익명 LOT/site 집계, 계산 결과와 gate 근거를 넣습니다. 파일명은 내보내지 않습니다.
 - `observed final-fail DPPM = paired final FAIL / paired units × 1,000,000`; 표본의 관측 비율을 환산한 것이며 생산 DPPM 추정치가 아닙니다. Retest recovery는 `first FAIL 후 final PASS / first FAIL`, golden set 지표는 correlation이 아닌 판정 일치율입니다. P95는 CSV의 unit test time만 사용하며 handler/index 포함 UPH·TAT가 아닙니다.
 - 첫 FAIL에는 `first_bin`, 최종 FAIL에는 `final_bin`, first FAIL 후 final PASS에는 `retest_count ≥ 1`을 요구합니다. 한 CSV는 8 MiB·100,000행·128 sites까지 받으며 단일 test stage/condition에 한정합니다. 이 요약 파일은 전체 retest sequence, guardband/margin, timing coverage, tester correlation을 입증하지 않으므로 해당 항목은 승인 plan의 별도 근거로 검토해야 합니다.
-- 합성 예시와 기본 기준은 동작 확인용이며 현장 기준이 아닙니다. 공개 데모에는 실제 제품·고객·LOT·serial·program/spec 정보나 기밀 파일을 입력하지 마세요.
+- 합성 runner는 seed 기반으로 재현되는 4,000 / 12,800 / 20,000 paired unit 데이터를 생성합니다. 정상 변경, Site 접촉 불안정, LOT 집중 open 계열 실패, 합성 hot-corner 마진 저하 시나리오를 선택해 동일 CSV parser와 paired qualification gate를 자동 실행하고, 생성 CSV와 PASS/HOLD를 포함한 집계 JSON을 내려받을 수 있습니다.
+- 이 자동화는 합성 데이터 생성·CSV 규칙 검증·브라우저 계산까지입니다. ATE/tester 명령 전송, 실제 장비 제어, MES/TMS 쓰기, 실제 제품의 품질 판정은 하지 않습니다. 공개 자료의 패키징 개념을 학습 시나리오에 참고했을 뿐, 실제 이천 사업장의 공정 recipe·불량률·장비 구조를 반영하지 않습니다.
+- 합성 기본 기준은 동작 확인용이며 현장 기준이 아닙니다. 공개 데모에는 실제 제품·고객·LOT·serial·program/spec 정보나 기밀 파일을 입력하지 마세요.
 
 ### 0-2. P&T Decision Brief
 
@@ -274,6 +276,8 @@ users
 
 ## 로컬 실행
 
+사전 요구사항: 전체 스택은 Docker Compose, Frontend 단독 실행·qualification 테스트는 Node.js 22와 Corepack, Backend 단독 실행은 Python `uv` 및 PostgreSQL이 필요합니다.
+
 ### 전체 스택
 
 ```bash
@@ -325,6 +329,7 @@ postgresql+asyncpg://app:app@localhost:5432/app
 # frontend
 cd frontend
 corepack pnpm lint
+corepack pnpm test:qualification
 corepack pnpm build
 
 # backend
@@ -377,6 +382,8 @@ coders.kr deployment
 패키지 Test Matrix의 실행 컨텍스트·검사항목은 브라우저에만 저장되므로 계정 간 공유, 승인 이력, 접근 권한이 필요한 운영 워크플로에 사용할 수 없습니다. 제조 식별자나 고객 자료를 공개 데모에 입력하지 마세요.
 
 Program Qualification CSV 분석도 브라우저 메모리에서만 수행하며 사용자 기기나 서버에 study를 저장하지 않습니다. 사내 인증·권한 분리·감사로그·보존정책·원본 파일 통제와 ATE/MES/TMS/Databook 연동이 없으므로, 이 공개 사이트를 실제 양산 운영 시스템으로 사용하면 안 됩니다. 실제 P&T 데이터로 검증할 수 있는 내부망 파일럿을 만들려면 별도 보안·IT·품질 승인을 먼저 받아야 합니다.
+
+합성 Qualification Runner는 Node.js 22의 내장 test runner로 seed 재현성, 생성량 상한, 동일 CSV parser 통과, 정상 시나리오의 engineering-review 가능 판정, injected-fault 시나리오의 HOLD 판정을 검증합니다. 여기서 말하는 자동 시험은 분석 로직 자동 실행이며 실물 package나 tester의 전기 시험을 자동 제어하는 기능이 아닙니다.
 
 ## 공개 기술 참고
 

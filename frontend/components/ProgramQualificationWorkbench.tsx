@@ -12,6 +12,14 @@ import {
   type QualificationCriteria,
   type QualificationRow,
 } from "@/lib/program-qualification";
+import {
+  generateSyntheticQualificationDataset,
+  SYNTHETIC_SCALES,
+  SYNTHETIC_SCENARIOS,
+  syntheticCriteriaFor,
+  type SyntheticScale,
+  type SyntheticScenario,
+} from "@/lib/synthetic-qualification";
 
 type ImportInfo = { hash: string; rowCount: number; bytes: number; importedAt: string };
 type StudyContext = { sourceAlias: string; product: string; qualificationId: string; planRevision: string; criteriaReference: string; goldenReference: string };
@@ -49,51 +57,12 @@ const CRITERIA_FIELDS: Array<{ key: keyof QualificationCriteria; label: string; 
 ];
 
 const EMPTY_CONTEXT: StudyContext = { sourceAlias: "", product: "", qualificationId: "", planRevision: "", criteriaReference: "", goldenReference: "" };
+const DEFAULT_SIMULATION_SEED = 20261003;
 
 function sha256(value: string): Promise<string> {
   return crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)).then((digest) =>
     [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
   );
-}
-
-function syntheticRows(): QualificationRow[] {
-  const rows: QualificationRow[] = [];
-  const sites = ["SITE-A", "SITE-B", "SITE-C", "SITE-D"];
-  const revisions = ["DEMO-BASE-01", "DEMO-CAND-02"];
-  for (const site of sites) {
-    for (let index = 0; index < 128; index += 1) {
-      const unitId = `${site}-U${String(index + 1).padStart(3, "0")}`;
-      const goldenExpected = index < 16 ? index < 15 : null;
-      for (const [revisionIndex, programRevision] of revisions.entries()) {
-        const firstPass = goldenExpected !== false && !(index === 100 && revisionIndex === 0);
-        rows.push({
-          unitId,
-          lotId: `DEMO-LOT-${site}`,
-          testStage: "DEMO-FT",
-          condition: "DEMO-ROOM-CONDITION",
-          programRevision,
-          site,
-          testerId: `${site}-DEMO-TESTER`,
-          firstPass,
-          finalPass: index === 15 ? false : true,
-          retestCount: index === 100 && revisionIndex === 0 ? 1 : 0,
-          firstBin: firstPass ? "" : index === 15 ? "DEMO-B07" : "DEMO-B19",
-          finalBin: index === 15 ? "DEMO-B07" : "",
-          testTimeSec: (revisionIndex === 0 ? 2.60 : 2.35) + (index % 5) * 0.01,
-          goldenExpected,
-        });
-      }
-    }
-  }
-  return rows;
-}
-
-function serializeDemoCsv(rows: QualificationRow[]): string {
-  const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
-  return [
-    QUALIFICATION_CSV_HEADERS.join(","),
-    ...rows.map((row) => [row.unitId, row.lotId, row.testStage, row.condition, row.programRevision, row.site, row.testerId, row.firstPass ? "PASS" : "FAIL", row.finalPass ? "PASS" : "FAIL", String(row.retestCount), row.firstBin, row.finalBin, row.goldenExpected === null ? "" : row.goldenExpected ? "PASS" : "FAIL", String(row.testTimeSec)].map(escape).join(",")),
-  ].join("\r\n");
 }
 
 function downloadText(filename: string, content: string, mime: string) {
@@ -141,6 +110,11 @@ export function ProgramQualificationWorkbench() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [simulationScenario, setSimulationScenario] = useState<SyntheticScenario>("nominal");
+  const [simulationScale, setSimulationScale] = useState<SyntheticScale>("standard");
+  const [simulationSeed, setSimulationSeed] = useState(DEFAULT_SIMULATION_SEED);
+  const [syntheticCsv, setSyntheticCsv] = useState("");
+  const [syntheticFilename, setSyntheticFilename] = useState("");
 
   const analysisState = useMemo(() => {
     if (!rows.length || !baselineRevision || !candidateRevision) return { analysis: null, error: "" };
@@ -152,6 +126,7 @@ export function ProgramQualificationWorkbench() {
   const criteriaIssues = qualificationCriteriaIssues(criteria);
   const criteriaReady = Object.values(criteria).every((value) => value !== null) && criteriaIssues.length === 0;
   const readyForReview = Boolean(contextReady && criteriaReady && importInfo && analysisState.analysis?.disposition === "ENGINEERING REVIEW 가능");
+  const canExportReport = Boolean(contextReady && criteriaReady && importInfo && analysisState.analysis);
   const worstLots = useMemo(() => analysisState.analysis ? [...analysisState.analysis.lotComparisons].sort((a, b) => a.deltaPp - b.deltaPp).slice(0, 20) : [], [analysisState.analysis]);
 
   async function loadCsv(file: File) {
@@ -160,6 +135,8 @@ export function ProgramQualificationWorkbench() {
     setNotice("");
     setRows([]);
     setImportInfo(null);
+    setSyntheticCsv("");
+    setSyntheticFilename("");
     setRevisions([]);
     setBaselineRevision("");
     setCandidateRevision("");
@@ -186,26 +163,59 @@ export function ProgramQualificationWorkbench() {
     }
   }
 
-  async function loadSyntheticExample() {
+  async function runSyntheticTest() {
     setBusy(true);
     setError("");
-    const example = syntheticRows();
-    const csv = serializeDemoCsv(example);
-    const hash = await sha256(csv);
-    setRows(example);
-    setRevisions(["DEMO-BASE-01", "DEMO-CAND-02"]);
-    setBaselineRevision("DEMO-BASE-01");
-    setCandidateRevision("DEMO-CAND-02");
-    setCriteria({ minPairedUnits: 500, minPairedCoveragePct: 100, minLots: 4, minUnitsPerLot: 32, minSites: 4, minGoldenUnits: 60, minGoldenAgreementPct: 99.7, maxFpyLossPp: 0.2, maxDppmIncrease: 500, maxPairedDiscordancePct: 0.9, maxP95TimeIncreasePct: 5, maxSiteSpreadPp: 2, maxWorstLotFpyLossPp: 0.5 });
-    setContext({ sourceAlias: "DEMO-SOURCE-01", product: "DEMO-MEMORY-DEVICE", qualificationId: "DEMO-QUAL-01", planRevision: "DEMO-PLAN-R1", criteriaReference: "DEMO-CRITERIA-R1", goldenReference: "DEMO-GOLDEN-R1" });
-    setImportInfo({ hash, rowCount: example.length, bytes: new Blob([csv]).size, importedAt: new Date().toISOString() });
-    setNotice("예시 데이터와 기준은 동작 설명용으로 생성했습니다. 현장 기준이나 제품 판정에 사용하면 안 됩니다.");
-    setBusy(false);
+    setNotice("합성 데이터 생성 후 동일 CSV 검증기와 qualification gate를 실행합니다…");
+    setRows([]);
+    setImportInfo(null);
+    setSyntheticCsv("");
+    setSyntheticFilename("");
+    setRevisions([]);
+    setBaselineRevision("");
+    setCandidateRevision("");
+    setCriteria(EMPTY_CRITERIA);
+    setContext(EMPTY_CONTEXT);
+    try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 20));
+      const dataset = generateSyntheticQualificationDataset({ scenario: simulationScenario, scale: simulationScale, seed: simulationSeed });
+      const bytes = new Blob([dataset.csv]).size;
+      if (bytes > MAX_QUALIFICATION_FILE_BYTES) throw new Error("생성 데이터가 업로드 한도 8 MiB를 넘었습니다. 더 작은 규모를 선택해 주세요.");
+      const validatedRows = parseQualificationCsv(dataset.csv);
+      const selectedCriteria = syntheticCriteriaFor(dataset);
+      const revisions = ["SIM-BASE-01", "SIM-CAND-02"];
+      const analysis = analyzeProgramQualification({ rows: validatedRows, baselineRevision: revisions[0], candidateRevision: revisions[1], criteria: selectedCriteria });
+      const hash = await sha256(dataset.csv);
+      setRows(validatedRows);
+      setSyntheticCsv(dataset.csv);
+      setSyntheticFilename(`synthetic-qualification-${dataset.scenario}-${dataset.seed}.csv`);
+      setRevisions(revisions);
+      setBaselineRevision(revisions[0]);
+      setCandidateRevision(revisions[1]);
+      setCriteria(selectedCriteria);
+      setContext({
+        sourceAlias: `SIM-SEEDED-${dataset.seed}`,
+        product: "SIM-PACKAGE-DEVICE",
+        qualificationId: `SIM-${dataset.scenario.toUpperCase()}-${dataset.seed}`,
+        planRevision: "SIM-PLAN-R1",
+        criteriaReference: "SIM-CRITERIA-R1",
+        goldenReference: "SIM-GOLDEN-R1",
+      });
+      setImportInfo({ hash, rowCount: validatedRows.length, bytes, importedAt: new Date().toISOString() });
+      const scenarioLabel = SYNTHETIC_SCENARIOS.find((item) => item.id === dataset.scenario)?.label ?? "합성 시나리오";
+      setNotice(`${scenarioLabel} · paired ${dataset.pairCount.toLocaleString()}개 / CSV ${validatedRows.length.toLocaleString()}행 · ${dataset.lotCount} LOT / ${dataset.siteCount} sites · seed ${dataset.seed}. 동일 조건으로 재현 가능한 합성 결과입니다. 자동 판정: ${analysis.disposition}.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "합성 qualification 실행에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function clearStudy() {
     setRows([]);
     setImportInfo(null);
+    setSyntheticCsv("");
+    setSyntheticFilename("");
     setRevisions([]);
     setBaselineRevision("");
     setCandidateRevision("");
@@ -217,7 +227,7 @@ export function ProgramQualificationWorkbench() {
 
   function exportReport() {
     const analysis = analysisState.analysis;
-    if (!analysis || !importInfo || !readyForReview) return;
+    if (!analysis || !importInfo || !canExportReport) return;
     const report = {
       schema: "yieldscope.program-qualification-report.v2",
       generatedAt: new Date().toISOString(),
@@ -283,7 +293,20 @@ export function ProgramQualificationWorkbench() {
               <button type="button" onClick={() => downloadText("program-qualification-template.csv", fileTemplate, "text/csv;charset=utf-8")} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm text-[#b8c6d7]"><Download className="size-4" /> 양식</button>
             </div></div>
             <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" aria-label="qualification CSV 파일 선택" onChange={(event) => { const file = event.target.files?.[0]; if (file) void loadCsv(file); }} />
-            <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void loadSyntheticExample()} disabled={busy} className="min-h-11 rounded-lg border border-[#55b8f6]/20 px-3 text-sm text-[#9dd4f3] disabled:opacity-50">합성 예시 불러오기</button><button type="button" onClick={clearStudy} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/[0.08] px-3 text-sm text-[#a0adbd]"><RotateCcw className="size-3.5" /> 초기화</button></div>
+            <div className="mt-4 rounded-xl border border-[#55b8f6]/15 bg-[#08111e]/70 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0"><p className="text-sm font-semibold text-[#dce8f4]">이천 P&amp;T 학습용 · 합성 Qualification Runner</p><p className="mt-1 text-sm leading-6 text-[#8394aa]">시나리오·규모·seed를 정하면 paired CSV 생성 → 동일 CSV parser 검증 → Baseline/Candidate 비교 → 기준 gate 자동 계산을 실행합니다. 실제 이천 생산 데이터나 tester 명령을 쓰지 않습니다.</p></div>
+                <span className="shrink-0 rounded-md border border-[#55b8f6]/20 px-2 py-1 text-xs font-semibold text-[#8fcbe9]">SIMULATION ONLY</span>
+              </div>
+              <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                <label className="min-w-0 text-sm font-medium text-[#aebed0]">P&amp;T 테스트 시나리오<select value={simulationScenario} onChange={(event) => setSimulationScenario(event.target.value as SyntheticScenario)} disabled={busy} className="mt-1 min-h-11 w-full rounded-lg border border-white/[0.09] bg-[#070e18] px-3 text-sm text-[#e2eaf4]">{SYNTHETIC_SCENARIOS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+                <label className="min-w-0 text-sm font-medium text-[#aebed0]">paired 표본 규모<select value={simulationScale} onChange={(event) => setSimulationScale(event.target.value as SyntheticScale)} disabled={busy} className="mt-1 min-h-11 w-full rounded-lg border border-white/[0.09] bg-[#070e18] px-3 text-sm text-[#e2eaf4]">{SYNTHETIC_SCALES.map((option) => <option key={option.id} value={option.id}>{option.label} · {option.lotCount} LOT / {option.siteCount} sites</option>)}</select></label>
+                <label className="min-w-0 text-sm font-medium text-[#aebed0]">재현 seed<input type="number" min={1} max={2_147_483_647} step={1} value={simulationSeed} onChange={(event) => setSimulationSeed(Number(event.target.value))} disabled={busy} className="mt-1 min-h-11 w-full rounded-lg border border-white/[0.09] bg-[#070e18] px-3 text-sm text-[#e2eaf4]" /><span className="mt-1 block text-sm font-normal text-[#708198]">같은 시나리오·규모·seed는 같은 결과를 생성합니다.</span></label>
+                <div className="min-w-0 self-end"><p className="mb-2 text-sm leading-6 text-[#8394aa]">합성 기준은 동작 확인 전용입니다. 현장 release 기준으로 사용하지 마세요.</p><button type="button" onClick={() => void runSyntheticTest()} disabled={busy} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#55b8f6] px-3 text-sm font-semibold text-[#071522] disabled:cursor-wait disabled:opacity-50">{busy ? <Activity className="size-4 animate-pulse" /> : <ShieldCheck className="size-4" />}{busy ? "자동 시험 실행 중…" : "합성 자동 시험 실행"}</button></div>
+              </div>
+              <p className="mt-3 rounded-lg border border-white/[0.06] bg-[#070e18]/70 p-3 text-sm leading-6 text-[#8394aa]">시나리오는 접촉성 재검 회복, LOT 집중 open 계열 지속 불량, 합성 열 코너의 마진 저하 신호를 포함합니다. 공개 자료에 알려진 패키징 맥락을 참고한 학습용 가설이며, SK hynix의 내부 공정·불량 데이터나 승인 recipe가 아닙니다.</p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => { if (syntheticCsv) downloadText(syntheticFilename || "synthetic-qualification.csv", syntheticCsv, "text/csv;charset=utf-8"); }} disabled={!syntheticCsv || busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#55b8f6]/20 px-3 text-sm text-[#9dd4f3] disabled:cursor-not-allowed disabled:opacity-40"><Download className="size-4" /> 생성 CSV 다운로드</button><button type="button" onClick={clearStudy} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/[0.08] px-3 text-sm text-[#a0adbd] disabled:opacity-50"><RotateCcw className="size-3.5" /> 초기화</button></div>
             {importInfo && <div className="mt-4 rounded-lg border border-white/[0.06] bg-[#070e18] p-3 text-xs leading-5 text-[#8c9db2]"><p className="text-[#d2dce9]">원본 행 {importInfo.rowCount.toLocaleString()} · {(importInfo.bytes / 1024).toFixed(1)} KiB · Program {revisions.join(" / ")}</p><p className="break-all">SHA-256 · {importInfo.hash}</p><p>읽은 시각 · {new Date(importInfo.importedAt).toLocaleString("ko-KR")}</p><p className="mt-1">파일명은 화면·내보내기 결과에 기록하지 않습니다.</p></div>}
             {busy && <p role="status" className="mt-3 text-sm text-[#9dd4f3]">브라우저에서 파일을 검증하고 있습니다…</p>}
             {error && <p role="alert" className="mt-3 rounded-lg border border-[#f36b78]/20 bg-[#f36b78]/[0.05] p-3 text-sm leading-5 text-[#ff9aa3]">{error}</p>}
@@ -319,7 +342,7 @@ export function ProgramQualificationWorkbench() {
         <div className="min-w-0 space-y-4">
           <div className={`rounded-xl border p-4 sm:p-5 ${readyForReview ? "border-[#31c7a2]/25 bg-[#31c7a2]/[0.045]" : analysisState.analysis?.blockers.some((item) => item.includes("FAIL") || item.includes("데이터 부족")) ? "border-[#f36b78]/20 bg-[#f36b78]/[0.035]" : "border-[#f2b84b]/20 bg-[#f2b84b]/[0.035]"}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold tracking-[0.12em] text-[#8b9bb0]">AUTOMATED GATE SUMMARY</p><h4 className="mt-1 break-keep text-xl font-semibold text-[#eef4fb]">{!rows.length ? "CSV를 선택해 분석 시작" : !baselineRevision || !candidateRevision ? "비교 revision 선택 필요" : !contextReady || !criteriaReady ? "기준·추적정보 입력 필요" : analysisState.analysis?.disposition ?? "짝지은 데이터 확인 필요"}</h4><p className="mt-1 text-sm leading-5 text-[#9baabe]">{readyForReview ? "계산된 gate를 통과했습니다. 제품·출하 판정 전에 승인 권한자의 검토·서명이 남아 있습니다." : "누락 또는 실패 gate를 확인하고 원자료·승인 기준을 다시 검토하세요."}</p></div>
-              <button type="button" onClick={exportReport} disabled={!readyForReview} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#f2b84b] px-3.5 text-sm font-semibold text-[#20170b] disabled:cursor-not-allowed disabled:opacity-40"><Download className="size-4" /> 검토 보고서 JSON</button></div>
+              <button type="button" onClick={exportReport} disabled={!canExportReport} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#f2b84b] px-3.5 text-sm font-semibold text-[#20170b] disabled:cursor-not-allowed disabled:opacity-40"><Download className="size-4" /> 결과 보고서 JSON</button></div>
             {analysisState.error && <p role="alert" className="mt-3 text-sm text-[#ff9aa3]">{analysisState.error}</p>}
           </div>
 
